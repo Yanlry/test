@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { User as UserIcon, Shield, Target, Sparkles, Star, Flame, Crown } from 'lucide-react';
+import { User as Star, Volume2, VolumeX, Crown } from 'lucide-react';
 import { User, Character, CharacterClass, CharacterAppearance, ClassSpell } from '../../types/game';
+import { useMusic } from '../../context/MusicContext'; 
+import { characterClasses } from '../../data/characterClasses'; 
 
 interface CharacterCreatorProps {
   currentUser: User;
@@ -29,13 +31,29 @@ interface Particle {
 }
 
 /**
- * Composant de contrôle musical
+ * Composant de contrôle musical unifié - MODIFIÉ
  */
-const MusicToggle: React.FC = React.memo(() => (
-  <button className="bg-gray-900 hover:bg-gray-800 text-orange-400 p-3 rounded-full border-2 border-orange-600 shadow-xl transition-all duration-300 hover:shadow-orange-500/20 hover:scale-110">
-    <Flame size={20} className="animate-pulse" />
-  </button>
-));
+const MusicToggle: React.FC = React.memo(() => {
+  const { isPlaying, toggleMusic } = useMusic(); // UTILISE LE CONTEXTE UNIFIÉ
+
+  return (
+    <button 
+      onClick={toggleMusic}
+      className={`p-3 rounded-full border-2 shadow-xl transition-all duration-300 hover:scale-110 ${
+        isPlaying 
+          ? 'bg-gray-900 hover:bg-gray-800 text-orange-400 border-orange-600 hover:shadow-orange-500/20' 
+          : 'bg-red-900 hover:bg-red-800 text-red-400 border-red-600 hover:shadow-red-500/20'
+      }`}
+      title={isPlaying ? 'Couper le son' : 'Activer le son'}
+    >
+      {isPlaying ? (
+        <Volume2 size={20} className="animate-pulse" />
+      ) : (
+        <VolumeX size={20} />
+      )}
+    </button>
+  );
+});
 
 /**
  * Composant sélecteur de classe simplifié
@@ -213,51 +231,6 @@ const CharacterCreator: React.FC<CharacterCreatorProps> = ({
 }) => {
   const [particles, setParticles] = useState<Particle[]>([]);
 
-  // Données de démonstration pour les classes
-  const characterClasses: CharacterClass[] = [
-    {
-      id: 'knight',
-      name: 'Chevalier',
-      color: '#3b82f6',
-      element: 'Lumière',
-      description: 'Un défenseur noble qui protège ses alliés avec bravoure et honneur.',
-      avatar: '🛡️',
-      icon: '🛡️',
-      spells: [
-        { id: 'shield-bash', name: 'Coup de Bouclier', icon: '🛡️', description: 'Frappe l\'ennemi avec le bouclier', type: 'offensive', unlockedAt: 1 },
-        { id: 'healing-light', name: 'Lumière Curative', icon: '✨', description: 'Soigne les blessures mineures', type: 'ultimate', unlockedAt: 3 },
-        { id: 'divine-protection', name: 'Protection Divine', icon: '🌟', description: 'Augmente la défense temporairement', type: 'defensive', unlockedAt: 5 }
-      ]
-    },
-    {
-      id: 'archer',
-      name: 'Archer',
-      color: '#10b981',
-      element: 'Nature',
-      description: 'Un maître de l\'arc qui frappe ses ennemis avec une précision mortelle.',
-      avatar: '🏹',
-      icon: '🏹',
-      spells: [
-        { id: 'precise-shot', name: 'Tir Précis', icon: '🎯', description: 'Tir avec précision accrue', type: 'offensive', unlockedAt: 1 },
-        { id: 'nature-bond', name: 'Lien Naturel', icon: '🌿', description: 'Communique avec les animaux', type: 'utility', unlockedAt: 3 },
-        { id: 'arrow-rain', name: 'Pluie de Flèches', icon: '🌧️', description: 'Attaque de zone dévastatrice', type: 'ultimate', unlockedAt: 6 }
-      ]
-    },
-    {
-      id: 'mage',
-      name: 'Mage',
-      color: '#8b5cf6',
-      element: 'Arcane',
-      description: 'Un tisseur de sorts qui maîtrise les forces mystiques de l\'univers.',
-      avatar: '🔮',
-      icon: '🔮',
-      spells: [
-        { id: 'magic-missile', name: 'Projectile Magique', icon: '✨', description: 'Lance un projectile d\'énergie pure', type: 'offensive', unlockedAt: 1 },
-        { id: 'mana-shield', name: 'Bouclier de Mana', icon: '🔵', description: 'Absorbe les dégâts avec la mana', type: 'defensive', unlockedAt: 3 },
-        { id: 'teleport', name: 'Téléportation', icon: '🌀', description: 'Se déplace instantanément', type: 'utility', unlockedAt: 4 }
-      ]
-    }
-  ];
 
   /**
    * Gestion de la création du personnage
@@ -349,7 +322,7 @@ const CharacterCreator: React.FC<CharacterCreatorProps> = ({
         />
       ))}
 
-      {/* Bouton musique */}
+      {/* Bouton musique unifié - MODIFIÉ */}
       <div className="absolute top-6 left-6 z-50">
         <MusicToggle />
       </div>

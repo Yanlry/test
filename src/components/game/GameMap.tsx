@@ -4,7 +4,7 @@ import newMapImage from '../../assets/1.jpg';
 
 import PlayerPanel from './PlayerPanel';
 import InventoryPanel from './InventoryPanel';
-import MusicToggle from '../MusicToggle';
+import SettingsMenu from './SettingsMenu';
 
 import { useGameMovement } from '../../hooks/useGameMovement';
 import { 
@@ -44,7 +44,7 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
     intelligence: 1,
   });
 
-  // État pour la grille (AJOUTÉ)
+  // État pour la grille (maintenant géré par le menu paramètres)
   const [showGrid, setShowGrid] = useState(true);
 
   const currentHP = 450;
@@ -74,22 +74,7 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
 
   return (
     <div className="h-screen w-screen overflow-hidden relative flex">
-      {/* Overlay de pause */}
-      {isGamePaused && (
-        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-40 flex items-center justify-center">
-          <div className="text-center text-white">
-            <Pause size={48} className="mx-auto mb-4 text-orange-400 animate-pulse" />
-            <p className="text-2xl font-bold mb-2">Jeu en Pause</p>
-            <p className="text-gray-300">Fermez les panneaux pour continuer à jouer</p>
-            <div className="mt-4 flex justify-center space-x-4">
-              <Star className="text-yellow-400 animate-spin" size={20} />
-              <Star className="text-yellow-400 animate-spin" size={16} style={{ animationDelay: '0.5s' }} />
-              <Star className="text-yellow-400 animate-spin" size={20} style={{ animationDelay: '1s' }} />
-            </div>
-          </div>
-        </div>
-      )}
-
+      
       {/* PANNEAU GAUCHE - VIE ET SORTS */}
       <div className={`transition-all duration-300 flex-shrink-0 relative z-50 ${showLeftSidebar ? 'w-80 opacity-100' : 'w-0 opacity-0'}`}>
         {showLeftSidebar && (
@@ -114,6 +99,42 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
 
       {/* ZONE DE JEU CENTRALE */}
       <div className="flex-1 relative">
+        {/* Message de pause à côté de l'inventaire (à gauche quand inventaire ouvert) */}
+        {isGamePaused && showRightSidebar && (
+          <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 z-40">
+            <div className="bg-gray-900/95 border-2 border-orange-500 rounded-xl p-6 backdrop-blur-sm shadow-2xl shadow-orange-500/30">
+              <div className="text-center text-white">
+                <Pause size={48} className="mx-auto mb-4 text-orange-400 animate-pulse" />
+                <p className="text-2xl font-bold mb-2 text-orange-400">Jeu en Pause</p>
+                <p className="text-gray-300">Fermez l'inventaire pour continuer</p>
+                <div className="mt-4 flex justify-center space-x-4">
+                  <Star className="text-yellow-400 animate-spin" size={20} />
+                  <Star className="text-yellow-400 animate-spin" size={16} style={{ animationDelay: '0.5s' }} />
+                  <Star className="text-yellow-400 animate-spin" size={20} style={{ animationDelay: '1s' }} />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Message de pause pour le panneau gauche (à droite quand panneau personnage ouvert) */}
+        {isGamePaused && showLeftSidebar && !showRightSidebar && (
+          <div className="absolute right-1/2 top-1/2 transform translate-x-1/2 -translate-y-1/2 z-40">
+            <div className="bg-gray-900/95 border-2 border-orange-500 rounded-xl p-6 backdrop-blur-sm shadow-2xl shadow-orange-500/30">
+              <div className="text-center text-white">
+                <Pause size={48} className="mx-auto mb-4 text-orange-400 animate-pulse" />
+                <p className="text-2xl font-bold mb-2 text-orange-400">Jeu en Pause</p>
+                <p className="text-gray-300">Fermez le panneau pour continuer</p>
+                <div className="mt-4 flex justify-center space-x-4">
+                  <Star className="text-yellow-400 animate-spin" size={20} />
+                  <Star className="text-yellow-400 animate-spin" size={16} style={{ animationDelay: '0.5s' }} />
+                  <Star className="text-yellow-400 animate-spin" size={20} style={{ animationDelay: '1s' }} />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div 
           className="absolute inset-0 w-full h-full"
           style={{
@@ -127,7 +148,7 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
 
         <div className="relative z-10 h-full flex flex-col">
           <div className="flex-1 relative">
-            {/* GRILLE DE JEU avec option masquable */}
+            {/* GRILLE DE JEU - MAINTENANT MASQUÉE QUAND INVENTAIRE OUVERT */}
             <div 
               className="absolute inset-0 grid gap-0"
               style={{
@@ -150,7 +171,7 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
                     onClick={() => handleTileClick(col, row)}
                     className={`
                       relative transition-all duration-200 flex items-center justify-center
-                      ${showGrid ? 'border border-gray-700/50' : 'border border-transparent'}
+                      ${showGrid && !showRightSidebar ? 'border border-gray-700/50' : 'border border-transparent'}
                       ${!isGamePaused && !isWaterTile ? 'cursor-pointer hover:border-yellow-400/50 hover:bg-yellow-400/10' : 'cursor-not-allowed'}
                       ${isPlayer ? 'bg-blue-500/30 border-blue-400' : ''}
                       ${isTarget && movement.isMoving ? 'bg-green-500/30 border-green-400 animate-pulse' : ''}
@@ -187,7 +208,7 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
               })}
             </div>
 
-            {/* BOUTON POUR OUVRIR PANNEAU GAUCHE (VIE/SORTS) - AJOUTÉ */}
+            {/* BOUTON POUR OUVRIR PANNEAU GAUCHE (VIE/SORTS) */}
             <div className="absolute top-4 left-4 z-50">
               <button 
                 onClick={() => setShowLeftSidebar(!showLeftSidebar)}
@@ -205,7 +226,7 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
               </button>
             </div>
 
-            {/* BOUTON POUR OUVRIR PANNEAU DROIT (INVENTAIRE) - AJOUTÉ */}
+            {/* BOUTON POUR OUVRIR PANNEAU DROIT (INVENTAIRE) */}
             <div className="absolute top-4 right-4 z-50">
               <button 
                 onClick={() => setShowRightSidebar(!showRightSidebar)}
@@ -223,26 +244,17 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
               </button>
             </div>
 
-            {/* CONTRÔLES EN BAS */}
-            <div className="absolute bottom-4 left-4 z-40" style={{ transform: 'scale(0.8)' }}>
-              <MusicToggle />
-            </div>
-
-            {/* BOUTON POUR MASQUER/AFFICHER LA GRILLE - AJOUTÉ */}
-            <div className="absolute bottom-4 left-28 z-40">
-              <button
-                onClick={() => setShowGrid(prev => !prev)}
-                className="px-3 py-2 text-sm rounded-lg bg-gray-900/90 text-white border border-gray-600 hover:bg-gray-800 hover:border-gray-500 backdrop-blur-sm shadow-lg transition"
-              >
-                {showGrid ? 'Masquer Grille' : 'Afficher Grille'}
-              </button>
-            </div>
+            {/* Menu paramètres centralisé en bas à gauche */}
+            <SettingsMenu 
+              showGrid={showGrid}
+              onToggleGrid={setShowGrid}
+            />
           </div>
         </div>
       </div>
 
-      {/* PANNEAU DROIT - INVENTAIRE */}
-      <div className={`transition-all duration-300 flex-shrink-0 relative z-50 ${showRightSidebar ? 'w-96 opacity-100' : 'w-0 opacity-0'}`}>
+      {/* PANNEAU DROIT - INVENTAIRE TRÈS ÉLARGI (2/3 de l'écran) */}
+      <div className={`transition-all duration-300 flex-shrink-0 relative z-50 ${showRightSidebar ? 'w-2/3 opacity-100' : 'w-0 opacity-0'}`}>
         {showRightSidebar && (
           <InventoryPanel
             character={character}
@@ -257,4 +269,3 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
 };
 
 export default GameMap;
-

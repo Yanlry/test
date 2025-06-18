@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Crown, Sword, Shield, Scroll, Volume2, VolumeX, Users, Castle, Swords, Zap, Target, Sparkles, Eye, Star } from 'lucide-react';
+import { useMusic } from '../../context/MusicContext';
 
 /**
  * Types pour l'authentification et les données utilisateur
@@ -66,25 +67,29 @@ interface ClassInfo {
 }
 
 /**
- * Composant de contrôle du volume avec thème sombre
+ * Composant de contrôle du volume avec démarrage automatique
  */
-const VolumeToggle: React.FC<{ isVolumeOn: boolean; onToggle: () => void }> = React.memo(({ isVolumeOn, onToggle }) => (
-  <button 
-    onClick={onToggle}
-    className={`p-3 rounded-full border-2 shadow-xl transition-all duration-300 hover:scale-110 ${
-      isVolumeOn 
-        ? 'bg-gray-900 hover:bg-gray-800 text-orange-400 border-orange-600 hover:shadow-orange-500/20' 
-        : 'bg-red-900 hover:bg-red-800 text-red-400 border-red-600 hover:shadow-red-500/20'
-    }`}
-    title={isVolumeOn ? 'Couper le son' : 'Activer le son'}
-  >
-    {isVolumeOn ? (
-      <Volume2 size={20} className="animate-pulse" />
-    ) : (
-      <VolumeX size={20} />
-    )}
-  </button>
-));
+const VolumeToggle: React.FC = React.memo(() => {
+  const { isPlaying, toggleMusic } = useMusic();
+
+  return (
+    <button 
+      onClick={toggleMusic}
+      className={`p-3 rounded-full border-2 shadow-xl transition-all duration-300 hover:scale-110 ${
+        isPlaying 
+          ? 'bg-gray-900 hover:bg-gray-800 text-orange-400 border-orange-600 hover:shadow-orange-500/20' 
+          : 'bg-red-900 hover:bg-red-800 text-red-400 border-red-600 hover:shadow-red-500/20'
+      }`}
+      title={isPlaying ? 'Couper le son' : 'Activer le son'}
+    >
+      {isPlaying ? (
+        <Volume2 size={20} className="animate-pulse" />
+      ) : (
+        <VolumeX size={20} />
+      )}
+    </button>
+  );
+});
 
 /**
  * Composant de flamme animée avec effets MMO
@@ -229,11 +234,6 @@ const AuthInterface: React.FC<AuthInterfaceProps> = ({
 }) => {
   const [particles, setParticles] = useState<Particle[]>([]);
   const [selectedClass, setSelectedClass] = useState<CharacterClass>('knight');
-  // État pour gérer le volume - activé par défaut
-  const [isVolumeOn, setIsVolumeOn] = useState<boolean>(true);
-  
-  // Référence pour l'élément audio HTML5 - SOLUTION SIMPLE ET FIABLE
-  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // Données statiques du royaume
   const kingdomStats: KingdomStats = useMemo(() => ({
@@ -241,101 +241,6 @@ const AuthInterface: React.FC<AuthInterfaceProps> = ({
     registeredWarriors: 15234,
     activeFortresses: 28
   }), []);
-
-  /**
-   * Fonction pour initialiser l'audio - MAINTENANT AVEC TON FICHIER MP3
-   */
-  const initializeAudio = useCallback((): void => {
-    try {
-      // On crée un élément audio HTML5 simple et fiable
-      if (!audioRef.current) {
-        audioRef.current = new Audio('/sounds/background.mp3'); // Ton fichier MP3
-        audioRef.current.loop = true; // Musique en boucle
-        audioRef.current.volume = 0.3; // Volume pas trop fort
-        
-        // Gestion des erreurs de chargement
-        audioRef.current.addEventListener('error', (e) => {
-          console.error('Erreur de chargement audio:', e);
-        });
-        
-        audioRef.current.addEventListener('canplaythrough', () => {
-          console.log('🎵 Audio prêt à être joué');
-        });
-      }
-      
-      // On joue la musique si le volume est activé
-      if (isVolumeOn && audioRef.current) {
-        audioRef.current.play().catch((error) => {
-          console.log('Auto-play bloqué par le navigateur:', error);
-        });
-      }
-    } catch (error) {
-      console.error('Erreur lors de l\'initialisation audio:', error);
-    }
-  }, [isVolumeOn]);
-
-  /**
-   * Fonction pour basculer le volume - MAINTENANT SIMPLE ET SANS ERREUR
-   */
-  const toggleVolume = useCallback((): void => {
-    setIsVolumeOn(prev => {
-      const newVolumeState = !prev;
-      
-      // Si l'audio n'est pas encore initialisé, on l'initialise
-      if (!audioRef.current) {
-        initializeAudio();
-      }
-      
-      // Gestion du volume avec l'élément audio HTML5
-      if (audioRef.current) {
-        if (newVolumeState) {
-          // Volume ON : on joue la musique
-          audioRef.current.play().catch((error) => {
-            console.log('Impossible de jouer la musique:', error);
-          });
-          console.log('🎵 Musique activée');
-        } else {
-          // Volume OFF : on pause la musique
-          audioRef.current.pause();
-          console.log('🔇 Musique coupée');
-        }
-      }
-      
-      return newVolumeState;
-    });
-  }, [initializeAudio]);
-
-  /**
-   * Gestionnaire pour démarrer l'audio au premier clic
-   */
-  const handleFirstClick = useCallback((): void => {
-    // On initialise l'audio au premier clic pour contourner les restrictions navigateur
-    if (!audioRef.current) {
-      initializeAudio();
-      // On supprime l'écouteur après le premier clic
-      document.removeEventListener('click', handleFirstClick);
-    }
-  }, [initializeAudio]);
-
-  /**
-   * Effet pour configurer l'écouteur de première interaction
-   */
-  useEffect(() => {
-    // On ajoute un écouteur pour le premier clic
-    document.addEventListener('click', handleFirstClick);
-
-    // Nettoyage quand le composant se démonte - SANS ERREUR
-    return () => {
-      document.removeEventListener('click', handleFirstClick);
-      
-      // On nettoie l'audio proprement
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.src = ''; // On vide la source
-        audioRef.current = null;
-      }
-    };
-  }, [handleFirstClick]);
 
   /**
    * Gestion de la soumission du formulaire de connexion
@@ -441,9 +346,9 @@ const AuthInterface: React.FC<AuthInterfaceProps> = ({
         />
       ))}
 
-      {/* Bouton volume - MAINTENANT AVEC TON FICHIER MP3 SANS ERREUR */}
+      {/* Bouton volume - Démarrage automatique de la musique */}
       <div className="absolute top-6 left-6 z-50">
-        <VolumeToggle isVolumeOn={isVolumeOn} onToggle={toggleVolume} />
+        <VolumeToggle />
       </div>
 
       {/* Torches magiques avec effets améliorés */}

@@ -25,7 +25,7 @@ import GameMap from './components/game/GameMap';
 // Hooks métier
 import { useAuth } from './hooks/useAuth';
 import { useCharacterCreation } from './hooks/useCharacterCreation';
-import { useBackgroundMusic } from './hooks/useBackgroundMusic';
+// SUPPRIMÉ : import { useBackgroundMusic } from './hooks/useBackgroundMusic';
 
 // Contexte musical
 import { MusicProvider } from './context/MusicContext';
@@ -38,8 +38,8 @@ const App: React.FC = () => {
   const auth = useAuth();
   const characterCreation = useCharacterCreation();
   
-  // Hook pour la musique de fond
-  useBackgroundMusic();
+  // SUPPRIMÉ : Hook pour la musique de fond (conflictuel avec MusicProvider)
+  // useBackgroundMusic();
 
   // Gestion de la création de personnage réussie
   const handleCharacterCreated = () => {
@@ -122,4 +122,4 @@ const AppWithMusic: React.FC = () => {
   );
 };
 
-export default AppWithMusic; 
+export default AppWithMusic;
