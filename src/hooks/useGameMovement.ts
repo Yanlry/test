@@ -1,31 +1,34 @@
 /**
- * HOOK DE DÉPLACEMENT AVEC ÉVITEMENT NATUREL DES MURS
- * Modification du coût A* pour éviter de longer les murs
+ * HOOK DE DÉPLACEMENT POUR MAP ISOMÉTRIQUE TILED
+ * ✅ CORRIGÉ: Utilise maintenant les VRAIES données de praticabilité de Tiled
+ * ✅ CORRIGÉ: Plus de cases "fantômes" praticables
+ * ✅ CORRIGÉ: Le joueur ne va que sur les vraies tuiles
  */
 
 import { useState, useCallback, useEffect } from 'react';
 import { Position, MapType } from '../types/game';
 import { 
-  isInWaterZone, 
+  MAP_WIDTH,
+  MAP_HEIGHT,
   DEFAULT_START_POSITION, 
   TELEPORT_POSITIONS, 
   MOVEMENT_SPEED 
 } from '../utils/gameConstants';
 
-// Configuration pour l'évitement des murs
-interface WallAvoidanceConfig {
-  enabled: boolean;                 // Activer/désactiver l'évitement
-  wallProximityPenalty: number;     // Pénalité pour être proche d'un mur (recommandé: 0.5-2.0)
-  checkRadius: number;              // Rayon de vérification autour d'une case (recommandé: 1-2)
+// Configuration pour l'évitement des obstacles
+interface ObstacleAvoidanceConfig {
+  enabled: boolean;
+  obstaclePenalty: number;
+  checkRadius: number;
 }
 
-const DEFAULT_WALL_AVOIDANCE: WallAvoidanceConfig = {
+const DEFAULT_OBSTACLE_AVOIDANCE: ObstacleAvoidanceConfig = {
   enabled: true,
-  wallProximityPenalty: 1.5,
+  obstaclePenalty: 1.5,
   checkRadius: 1
 };
 
-export const useGameMovement = (wallConfig: WallAvoidanceConfig = DEFAULT_WALL_AVOIDANCE) => {
+export const useGameMovement = (avoidanceConfig: ObstacleAvoidanceConfig = DEFAULT_OBSTACLE_AVOIDANCE) => {
   // États de position et mouvement
   const [playerPosition, setPlayerPosition] = useState<Position>(DEFAULT_START_POSITION);
   const [targetPosition, setTargetPosition] = useState<Position | null>(null);
@@ -36,36 +39,86 @@ export const useGameMovement = (wallConfig: WallAvoidanceConfig = DEFAULT_WALL_A
   const [currentPath, setCurrentPath] = useState<Position[]>([]);
   const [currentPathIndex, setCurrentPathIndex] = useState(0);
 
+  // ✅ NOUVEAU: État pour stocker la fonction de praticabilité de Tiled
+  const [tiledWalkableFunction, setTiledWalkableFunction] = useState<((x: number, y: number) => boolean) | null>(null);
+
   /**
-   * Calcule le nombre de murs adjacents à une position
+   * ✅ NOUVEAU: Fonction pour recevoir les données de praticabilité de Tiled
+   * @param walkableFunction Fonction qui vérifie si une case est praticable selon Tiled
+   */
+  const setWalkableFunction = useCallback((walkableFunction: (x: number, y: number) => boolean) => {
+    console.log('📡 Hook de mouvement: réception des données de praticabilité Tiled');
+    setTiledWalkableFunction(() => walkableFunction);
+  }, []);
+
+  /**
+   * ✅ CORRIGÉ: Utilise maintenant les VRAIES données de praticabilité de Tiled
+   * @param x Coordonnée X (0 à 15)
+   * @param y Coordonnée Y (0 à 15)
+   * @returns true si la case est praticable selon Tiled
+   */
+  const isValidPosition = useCallback((x: number, y: number): boolean => {
+    // Vérifier les limites de la map 16x16
+    if (x < 0 || x >= MAP_WIDTH || y < 0 || y >= MAP_HEIGHT) {
+      return false;
+    }
+    
+    // ✅ UTILISER les vraies données de Tiled si disponibles
+    if (tiledWalkableFunction) {
+      const isWalkable = tiledWalkableFunction(x, y);
+      console.log(`🔍 Vérification praticabilité (${x}, ${y}): ${isWalkable ? '✅ Praticable' : '❌ Bloquée'}`);
+      return isWalkable;
+    }
+    
+    // Fallback si les données Tiled ne sont pas encore chargées
+    console.log(`⚠️ Données Tiled non disponibles, fallback pour (${x}, ${y})`);
+    return true;
+  }, [tiledWalkableFunction]);
+
+  /**
+   * ✅ CORRIGÉ: Vérifie si une position est bloquée selon les vraies données Tiled
    * @param x Coordonnée X
    * @param y Coordonnée Y
-   * @returns Nombre de murs adjacents (0-8)
+   * @returns true si la case est bloquée
    */
-  const countAdjacentWalls = useCallback((x: number, y: number): number => {
-    let wallCount = 0;
-    const radius = wallConfig.checkRadius;
+  const isPositionBlocked = useCallback((x: number, y: number): boolean => {
+    return !isValidPosition(x, y);
+  }, [isValidPosition]);
+
+  /**
+   * Calcule le nombre d'obstacles adjacents à une position
+   * @param x Coordonnée X
+   * @param y Coordonnée Y
+   * @returns Nombre d'obstacles adjacents
+   */
+  const countAdjacentObstacles = useCallback((x: number, y: number): number => {
+    let obstacleCount = 0;
+    const radius = avoidanceConfig.checkRadius;
     
     for (let dx = -radius; dx <= radius; dx++) {
       for (let dy = -radius; dy <= radius; dy++) {
         if (dx === 0 && dy === 0) continue; // Ignorer la case centrale
         
-        if (isInWaterZone(x + dx, y + dy)) {
-          wallCount++;
+        if (isPositionBlocked(x + dx, y + dy)) {
+          obstacleCount++;
         }
       }
     }
     
-    return wallCount;
-  }, [wallConfig.checkRadius]);
+    return obstacleCount;
+  }, [avoidanceConfig.checkRadius, isPositionBlocked]);
 
   /**
-   * Algorithme A* modifié avec évitement des murs
+   * ✅ CORRIGÉ: Algorithme A* utilisant les vraies données de praticabilité Tiled
    * @param start Position de départ
    * @param goal Position d'arrivée
    * @returns Chemin calculé
    */
-  const findPathWithWallAvoidance = useCallback((start: Position, goal: Position): Position[] => {
+  const findPathForIsometricMap = useCallback((start: Position, goal: Position): Position[] => {
+    console.log(`🧭 === CALCUL DE CHEMIN A* ===`);
+    console.log(`📍 Départ: (${start.x}, ${start.y})`);
+    console.log(`🎯 Destination: (${goal.x}, ${goal.y})`);
+    
     interface AStarNode {
       x: number;
       y: number;
@@ -80,19 +133,19 @@ export const useGameMovement = (wallConfig: WallAvoidanceConfig = DEFAULT_WALL_A
       return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
     };
 
-    // Calculer le coût d'une case avec pénalité pour proximité des murs
+    // Calculer le coût d'une case avec pénalité pour proximité des obstacles
     const getCostForTile = (x: number, y: number): number => {
-      if (isInWaterZone(x, y)) {
+      if (isPositionBlocked(x, y)) {
+        console.log(`🚫 Case (${x}, ${y}) bloquée`);
         return Infinity; // Case bloquée
       }
       
       let cost = 1.0; // Coût de base
       
-      if (wallConfig.enabled) {
-        const adjacentWalls = countAdjacentWalls(x, y);
-        if (adjacentWalls > 0) {
-          // Ajouter une pénalité basée sur le nombre de murs adjacents
-          const penalty = (adjacentWalls / (wallConfig.checkRadius * 8)) * wallConfig.wallProximityPenalty;
+      if (avoidanceConfig.enabled) {
+        const adjacentObstacles = countAdjacentObstacles(x, y);
+        if (adjacentObstacles > 0) {
+          const penalty = (adjacentObstacles / (avoidanceConfig.checkRadius * 8)) * avoidanceConfig.obstaclePenalty;
           cost += penalty;
         }
       }
@@ -138,15 +191,17 @@ export const useGameMovement = (wallConfig: WallAvoidanceConfig = DEFAULT_WALL_A
           node = node.parent;
         }
         
-        console.log(`🎯 Chemin A* avec évitement calculé: ${path.length} cases`);
+        console.log(`✅ Chemin trouvé: ${path.length} cases`);
+        console.log(`🛤️ Chemin complet:`, path);
         return path;
       }
       
-      // Examiner les voisins (8 directions)
+      // Examiner les 4 directions principales
       const neighbors = [
-        [-1, -1], [-1, 0], [-1, 1],
-        [0, -1],           [0, 1],
-        [1, -1],  [1, 0],  [1, 1]
+        [0, -1], // Haut
+        [1, 0],  // Droite
+        [0, 1],  // Bas
+        [-1, 0]  // Gauche
       ];
       
       for (const [dx, dy] of neighbors) {
@@ -163,9 +218,7 @@ export const useGameMovement = (wallConfig: WallAvoidanceConfig = DEFAULT_WALL_A
           continue; // Case bloquée
         }
         
-        // Coût du mouvement (diagonal = √2, cardinal = 1)
-        const movementCost = (dx !== 0 && dy !== 0) ? Math.sqrt(2) : 1;
-        const tentativeG = current.g + (movementCost * tileCost);
+        const tentativeG = current.g + tileCost;
         
         // Vérifier si ce voisin est déjà dans l'open set
         let existingNode = openSet.find(node => node.x === neighborX && node.y === neighborY);
@@ -189,9 +242,9 @@ export const useGameMovement = (wallConfig: WallAvoidanceConfig = DEFAULT_WALL_A
       }
     }
     
-    console.log('❌ Aucun chemin trouvé avec A* modifié');
+    console.log('❌ Aucun chemin trouvé vers la destination');
     return [];
-  }, [wallConfig, countAdjacentWalls]);
+  }, [avoidanceConfig, countAdjacentObstacles, isPositionBlocked]);
 
   // Fonction pour vérifier si une position est un portail
   const isTeleportPosition = useCallback((x: number, y: number): boolean => {
@@ -215,12 +268,14 @@ export const useGameMovement = (wallConfig: WallAvoidanceConfig = DEFAULT_WALL_A
     console.log(`📍 Téléportation vers: ${newMap === 'world' ? 'Monde principal' : 'Nouvelle zone'}`);
   }, []);
 
-  // Fonction pour démarrer un déplacement avec évitement des murs
+  // ✅ CORRIGÉ: Fonction pour démarrer un déplacement avec vraie validation
   const moveToPosition = useCallback((target: Position) => {
-    console.log(`🚀 Calcul du chemin avec évitement vers (${target.x}, ${target.y})`);
+    console.log(`🚀 === DEMANDE DE DÉPLACEMENT ===`);
+    console.log(`📍 Position actuelle: (${playerPosition.x}, ${playerPosition.y})`);
+    console.log(`🎯 Destination demandée: (${target.x}, ${target.y})`);
     
-    // Calculer le chemin avec l'algorithme A* modifié
-    const path = findPathWithWallAvoidance(playerPosition, target);
+    // Calculer le chemin avec l'algorithme A* utilisant les vraies données Tiled
+    const path = findPathForIsometricMap(playerPosition, target);
     
     if (path.length === 0) {
       console.log('❌ Impossible de trouver un chemin vers cette destination');
@@ -232,30 +287,34 @@ export const useGameMovement = (wallConfig: WallAvoidanceConfig = DEFAULT_WALL_A
     setCurrentPathIndex(0);
     setIsMoving(true);
     
-    console.log(`✅ Chemin avec évitement calculé : ${path.length} cases à parcourir`);
+    console.log(`✅ Mouvement lancé: ${path.length} cases à parcourir`);
     return true;
-  }, [playerPosition, findPathWithWallAvoidance]);
+  }, [playerPosition, findPathForIsometricMap]);
 
-  // Fonction pour gérer le clic sur une tuile
+  // ✅ CORRIGÉ: Fonction pour gérer le clic avec vraie validation
   const handleTileClick = useCallback((x: number, y: number) => {
-    console.log(`Case cliquée: (${x}, ${y})`);
+    console.log(`🎯 === GESTION DU CLIC ===`);
+    console.log(`📍 Case cliquée: (${x}, ${y})`);
+    console.log(`🏃 Position actuelle du joueur: (${playerPosition.x}, ${playerPosition.y})`);
     
     // Ne rien faire si on clique sur la position actuelle
     if (x === playerPosition.x && y === playerPosition.y) {
+      console.log(`ℹ️ Clic sur la position actuelle, ignoré`);
       return;
     }
     
-    // Vérifier si la case est bloquée
-    if (isInWaterZone(x, y)) {
-      console.log(`🌊 Déplacement impossible ! La case (${x}, ${y}) est dans l'eau.`);
+    // Vérifier si la case est praticable selon les vraies données Tiled
+    if (!isValidPosition(x, y)) {
+      console.log(`🚫 Case (${x}, ${y}) non praticable selon Tiled`);
       return;
     }
     
+    console.log(`✅ Case (${x}, ${y}) praticable, lancement du mouvement`);
     // Lancer le mouvement
     moveToPosition({ x, y });
-  }, [playerPosition, moveToPosition]);
+  }, [playerPosition, moveToPosition, isValidPosition]);
 
-  // Effect pour gérer l'animation du mouvement (identique à l'original)
+  // Effect pour gérer l'animation du mouvement (INCHANGÉ)
   useEffect(() => {
     if (!isMoving || currentPath.length === 0) return;
 
@@ -281,7 +340,7 @@ export const useGameMovement = (wallConfig: WallAvoidanceConfig = DEFAULT_WALL_A
               // Retour vers la map principale
               changeMap('world', TELEPORT_POSITIONS.WORLD_SPAWN_FROM_NEW);
             }
-          }, 500); // Attendre 500ms avant de téléporter
+          }, 500);
         }
         
         return;
@@ -307,7 +366,7 @@ export const useGameMovement = (wallConfig: WallAvoidanceConfig = DEFAULT_WALL_A
     setCurrentPathIndex(0);
   }, []);
 
-  // Fonction pour téléporter directement (pour debug ou admin)
+  // Fonction pour téléporter directement
   const teleportTo = useCallback((position: Position, map?: MapType) => {
     stopMovement();
     setPlayerPosition(position);
@@ -325,15 +384,10 @@ export const useGameMovement = (wallConfig: WallAvoidanceConfig = DEFAULT_WALL_A
       playerPosition,
       isPlayerMoving: isMoving,
       remainingSteps: currentPath.length - currentPathIndex,
-      wallAvoidanceConfig: wallConfig
+      mapDimensions: `${MAP_WIDTH}x${MAP_HEIGHT}`,
+      isIsometric: true
     };
-  }, [currentMap, playerPosition, isMoving, currentPath.length, currentPathIndex, wallConfig]);
-
-  // Fonction pour ajuster l'évitement des murs en temps réel
-  const updateWallAvoidance = useCallback((newConfig: Partial<WallAvoidanceConfig>) => {
-    Object.assign(wallConfig, newConfig);
-    console.log('🧭 Configuration d\'évitement des murs mise à jour:', wallConfig);
-  }, [wallConfig]);
+  }, [currentMap, playerPosition, isMoving, currentPath.length, currentPathIndex]);
 
   return {
     // États
@@ -350,12 +404,15 @@ export const useGameMovement = (wallConfig: WallAvoidanceConfig = DEFAULT_WALL_A
     changeMap,
     stopMovement,
     teleportTo,
-    updateWallAvoidance,
+    
+    // ✅ NOUVEAU: Fonction pour recevoir les données de praticabilité
+    setWalkableFunction,
     
     // Utilitaires
     isTeleportPosition,
     getCurrentMapInfo,
-    countAdjacentWalls,
+    isValidPosition,
+    isPositionBlocked,
     
     // Données calculées
     remainingSteps: currentPath.length - currentPathIndex

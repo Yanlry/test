@@ -1,9 +1,11 @@
 /**
- * ALGORITHMES DE PATHFINDING
- * Pour modifier la logique de déplacement et recherche de chemin, c'est ici
+ * ALGORITHMES DE PATHFINDING - VERSION CORRIGÉE POUR MAP 16x16
+ * ✅ CORRIGÉ: Utilise les nouvelles dimensions MAP_WIDTH=16, MAP_HEIGHT=16
+ * ✅ CORRIGÉ: Compatible avec ta map isométrique Tiled
  */
 
 import { Position, PathNode } from '../types/game';
+import { MAP_WIDTH, MAP_HEIGHT } from './gameConstants';
 
 /**
  * Calcule la distance Manhattan entre deux points (pour l'heuristique A*)
@@ -14,9 +16,10 @@ export const calculateDistance = (pos1: Position, pos2: Position): number => {
 
 /**
  * Vérifie si une position est dans les limites de la carte
+ * ✅ CORRIGÉ: Utilise maintenant MAP_WIDTH=16 et MAP_HEIGHT=16 au lieu de 40x30
  */
 export const isValidPosition = (x: number, y: number): boolean => {
-  return x >= 0 && x < 40 && y >= 0 && y < 30;
+  return x >= 0 && x < MAP_WIDTH && y >= 0 && y < MAP_HEIGHT;
 };
 
 /**
@@ -92,7 +95,7 @@ export const findPath = (
     ];
 
     for (const neighbor of neighbors) {
-      // Vérifier si la case voisine est valide
+      // ✅ CORRIGÉ: Vérifier si la case voisine est valide avec les nouvelles dimensions
       if (!isValidPosition(neighbor.x, neighbor.y) || 
           isBlocked(neighbor.x, neighbor.y) ||
           closedList.some(node => node.x === neighbor.x && node.y === neighbor.y)) {
