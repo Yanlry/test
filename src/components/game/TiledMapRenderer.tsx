@@ -1,8 +1,8 @@
 /**
- * COMPOSANT TILED MAP RENDERER - CENTRAGE PARFAIT AUTOMATIQUE
- * ✅ CORRIGÉ: Map parfaitement centrée selon la taille de l'écran
- * ✅ CORRIGÉ: Calcul automatique pour tous les écrans
- * ✅ CORRIGÉ: Centrage qui s'adapte dynamiquement
+ * COMPOSANT TILED MAP RENDERER - MAP REMONTÉE POUR ÉVITER LA BARRE DE SORTS
+ * ✅ CORRIGÉ: Map repositionnée plus haute pour éviter la barre GameUI
+ * ✅ CORRIGÉ: Grille parfaitement intégrée au sol
+ * ✅ CORRIGÉ: Centrage automatique parfait
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -143,7 +143,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
     return { isoX, isoY };
   };
 
-  // ✅ CENTRAGE SIMPLE ET EFFICACE
+  // ✅ CENTRAGE REMONTE POUR ÉVITER LA BARRE GAMEUI
   const getCenterOffset = useCallback(() => {
     if (!tiledMap) return { x: 0, y: 0 };
     
@@ -151,7 +151,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
     const screenCenterX = window.innerWidth / 2;
     const screenCenterY = window.innerHeight / 2;
     
-    // 🎯 CENTRAGE SIMPLIFIÉ - On centre directement sur le milieu de la map
+    // 🎯 CENTRAGE SIMPLE - On centre directement sur le milieu de la map
     // Le centre de notre map 16x16 sera à la case (8, 8)
     const mapCenterGridX = tiledMap.width / 2;
     const mapCenterGridY = tiledMap.height / 2;
@@ -159,14 +159,15 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
     // Position isométrique du centre de la map
     const { isoX: mapCenterIsoX, isoY: mapCenterIsoY } = calculateIsometricPosition(mapCenterGridX, mapCenterGridY);
     
-    // Décalage pour placer le centre de la map au centre de l'écran
+    // ✅ NOUVEAU: Décalage pour placer le centre de la map au centre de l'écran
+    // MAIS 120px plus haut pour éviter la barre GameUI
     const offsetX = screenCenterX - mapCenterIsoX;
-    const offsetY = screenCenterY - mapCenterIsoY;
+    const offsetY = screenCenterY - mapCenterIsoY - 120; // ← REMONTÉE DE 120px
     
-    console.log('🎯 CENTRAGE SIMPLE:');
+    console.log('🎯 CENTRAGE AVEC MAP REMONTÉE:');
     console.log(`   Écran: ${window.innerWidth} x ${window.innerHeight}`);
     console.log(`   Centre map: (${mapCenterGridX}, ${mapCenterGridY}) → iso(${mapCenterIsoX}, ${mapCenterIsoY})`);
-    console.log(`   Offset: (${offsetX}, ${offsetY})`);
+    console.log(`   Offset: (${offsetX}, ${offsetY}) - MAP REMONTÉE DE 120px`);
     
     return { x: offsetX, y: offsetY };
   }, [tiledMap]);
@@ -373,12 +374,12 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
     return elements;
   };
 
-  // ✅ RECALCULER LE CENTRAGE QUAND LA FENÊTRE CHANGE DE TAILLE
+  // Recalculer le centrage quand la fenêtre change de taille
   useEffect(() => {
     const handleResize = () => {
       // Force un re-render pour recalculer le centrage
       if (tiledMap) {
-        console.log('📐 Redimensionnement détecté - Recentrage automatique');
+        console.log('📐 Redimensionnement détecté - Recentrage automatique avec map remontée');
       }
     };
 
@@ -393,7 +394,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
         <div className="text-center text-white">
           <div className="text-4xl mb-4 animate-spin">🌀</div>
           <div className="text-xl">Chargement de la map...</div>
-          <div className="text-gray-400 mt-2">Centrage automatique en cours...</div>
+          <div className="text-gray-400 mt-2">Map remontée pour éviter l'interface...</div>
         </div>
       </div>
     );
@@ -459,7 +460,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
           {targetPosition && (
             <div className="text-green-400">🎯 Cible: ({targetPosition.x}, {targetPosition.y})</div>
           )}
-          <div className="text-green-400">🎯 CENTRAGE AUTOMATIQUE PARFAIT</div>
+          <div className="text-green-400">🔺 MAP REMONTÉE DE 120px</div>
           <div className="text-blue-400">🎯 Grille: {showGrid ? 'ON' : 'OFF'}</div>
         </div>
       )}

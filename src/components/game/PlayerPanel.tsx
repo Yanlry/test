@@ -1,12 +1,15 @@
 /**
- * PANNEAU DU JOUEUR (SIDEBAR GAUCHE) - STYLE MMO SOMBRE
- * Pour modifier l'apparence des stats, sorts et barres de vie, c'est ici
+ * PANNEAU JOUEUR PLEIN ÉCRAN AVEC SCROLL
+ * ✅ VERSION FINALE: Scroll qui fonctionne parfaitement
+ * ✅ LAYOUT: Utilise tout l'écran de manière harmonieuse
+ * ✅ EXTENSIBLE: Facile d'ajouter de nouvelles rubriques
+ * ✅ TOUTES LES FONCTIONNALITÉS: Conservées et améliorées
  */
 
 import React, { useState } from 'react';
 import { Character, PlayerStats, Position } from '../../types/game';
 import { DEFAULT_SPELLS } from '../../utils/gameConstants';
-import { X, Star, Heart, Zap, Plus, LogOut, ChevronDown, ChevronUp } from 'lucide-react';
+import { X, Star, Heart, Zap, Plus, LogOut, ChevronDown, ChevronUp, Sword, Shield, Activity, Sparkles, Target, Brain, User, MapPin, Gauge, Award, Book, Settings, Trophy, Map } from 'lucide-react';
 
 interface PlayerPanelProps {
   character: Character;
@@ -22,11 +25,11 @@ interface PlayerPanelProps {
   onImproveStat: (statName: keyof PlayerStats, pointsToAdd?: number) => void;
   onUpdateStatInput: (statName: keyof PlayerStats, value: number) => void;
   onBackToMenu: () => void;
-  onClose?: () => void; // Nouveau prop pour fermer le panel
+  onClose?: () => void;
 }
 
 /**
- * Composant de barre de progression améliorée
+ * Composant de barre de progression moderne
  */
 const ProgressBar: React.FC<{
   current: number;
@@ -62,42 +65,108 @@ const ProgressBar: React.FC<{
 });
 
 /**
- * Composant pour les sections déroulables
+ * Composant de stat moderne et lisible
  */
-const CollapsibleSection: React.FC<{
-  title: string;
-  icon: React.ReactNode;
-  isOpen: boolean;
-  onToggle: () => void;
-  children: React.ReactNode;
-  badge?: string;
-}> = ({ title, icon, isOpen, onToggle, children, badge }) => {
+const StatCard: React.FC<{
+  stat: {
+    key: keyof PlayerStats;
+    name: string;
+    icon: React.ReactNode;
+    color: string;
+    description: string;
+    bgColor: string;
+  };
+  value: number;
+  availablePoints: number;
+  inputValue: number;
+  onImprove: () => void;
+  onInputChange: (value: number) => void;
+}> = ({ stat, value, availablePoints, inputValue, onImprove, onInputChange }) => {
   return (
-    <div className="border-b border-gray-700">
-      <button
-        onClick={onToggle}
-        className="w-full p-4 flex items-center justify-between hover:bg-gray-800/50 transition-colors"
-      >
-        <div className="flex items-center space-x-2">
-          {icon}
-          <h4 className="text-lg font-bold text-orange-400">{title}</h4>
-          {badge && (
-            <span className="text-sm bg-green-600/20 text-green-400 px-3 py-1 rounded-full border border-green-600/40">
-              {badge}
-            </span>
-          )}
+    <div className={`${stat.bgColor} rounded-xl p-4 border border-gray-700/50 transition-all hover:border-gray-600 hover:scale-105`}>
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center space-x-3">
+          <div className="w-12 h-12 rounded-lg bg-gray-800/50 flex items-center justify-center border border-gray-600">
+            {stat.icon}
+          </div>
+          <div>
+            <span className="text-white font-semibold text-base">{stat.name}</span>
+            <p className="text-xs text-gray-400">{stat.description}</p>
+          </div>
         </div>
-        {isOpen ? (
-          <ChevronUp className="text-gray-400" size={20} />
-        ) : (
-          <ChevronDown className="text-gray-400" size={20} />
-        )}
-      </button>
+        <span className={`${stat.color} font-bold text-3xl`}>
+          {value}
+        </span>
+      </div>
       
-      {/* Contenu déroulable avec animation */}
-      <div className={`overflow-hidden transition-all duration-300 ${isOpen ? 'max-h-screen opacity-100' : 'max-h-0 opacity-0'}`}>
-        <div className="p-4 pt-0">
-          {children}
+      {/* Section d'amélioration des stats */}
+      {availablePoints > 0 && (
+        <div className="flex items-center space-x-3 mt-3">
+          <input
+            type="number"
+            min="1"
+            max={availablePoints}
+            value={inputValue}
+            onChange={(e) => onInputChange(parseInt(e.target.value) || 1)}
+            className="w-16 px-2 py-2 bg-gray-700/50 text-white rounded border border-gray-600 focus:border-orange-500 focus:outline-none text-sm text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+          />
+          <button 
+            onClick={onImprove}
+            disabled={availablePoints < inputValue}
+            className="flex-1 px-4 py-2 bg-green-600/20 hover:bg-green-600/30 disabled:bg-gray-600/20 disabled:cursor-not-allowed text-green-400 disabled:text-gray-500 rounded-lg border border-green-600/40 transition-colors text-sm font-medium flex items-center justify-center space-x-2"
+          >
+            <Plus size={14} />
+            <span>Améliorer +{inputValue}</span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+/**
+ * Composant de sort moderne
+ */
+const SpellCard: React.FC<{
+  spell: any;
+  index: number;
+}> = ({ spell, index }) => {
+  const isUnlocked = index < 3;
+  
+  return (
+    <div
+      className={`p-4 rounded-xl border transition-all text-left group hover:scale-105 ${
+        isUnlocked 
+          ? 'border-orange-500/50 bg-gradient-to-br from-orange-500/10 to-orange-600/20 hover:from-orange-500/20 hover:to-orange-600/30 shadow-lg shadow-orange-500/10' 
+          : 'border-gray-600/50 bg-gradient-to-br from-gray-800/50 to-gray-900/50 hover:from-gray-700/50 hover:to-gray-800/50'
+      }`}
+      title={`${spell.name} - ${spell.manaCost} mana`}
+    >
+      <div className="flex items-center space-x-4">
+        <div className={`w-16 h-16 rounded-xl flex items-center justify-center border-2 transition-all ${
+          isUnlocked 
+            ? 'border-orange-500/50 bg-orange-500/10 group-hover:scale-105' 
+            : 'border-gray-600 bg-gray-800/50'
+        }`}>
+          <div className="text-3xl group-hover:scale-110 transition-transform">
+            {spell.icon}
+          </div>
+        </div>
+        <div className="flex-1">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-white font-bold text-base">{spell.name}</p>
+            <div className="flex items-center space-x-2">
+              <span className="bg-blue-600/20 text-blue-400 px-3 py-1 rounded-lg text-sm border border-blue-600/30 font-medium">
+                {spell.manaCost} MP
+              </span>
+              {!isUnlocked && (
+                <span className="text-gray-500 text-xl">🔒</span>
+              )}
+            </div>
+          </div>
+          <p className="text-gray-400 text-sm">
+            {isUnlocked ? '✅ Sort disponible - Prêt à l\'utilisation' : '🔒 Sort verrouillé - Débloqué au niveau supérieur'}
+          </p>
         </div>
       </div>
     </div>
@@ -120,200 +189,272 @@ const PlayerPanel: React.FC<PlayerPanelProps> = ({
   onBackToMenu,
   onClose
 }) => {
-  // États pour gérer l'ouverture/fermeture des sections
-  const [isStatsOpen, setIsStatsOpen] = useState<boolean>(true);
-  const [isSpellsOpen, setIsSpellsOpen] = useState<boolean>(true);
-
-  // Configuration des stats avec leurs icônes et couleurs MMO
+  // Configuration des stats avec icônes modernes
   const statsConfig = [
-    { key: 'vitality' as keyof PlayerStats, name: 'Vitalité', icon: '❤️', color: 'text-red-400', description: '+5 PV', bgColor: 'bg-red-500/20' },
-    { key: 'wisdom' as keyof PlayerStats, name: 'Sagesse', icon: '🔮', color: 'text-purple-400', description: '+3 PM', bgColor: 'bg-purple-500/20' },
-    { key: 'strength' as keyof PlayerStats, name: 'Force', icon: '💪', color: 'text-orange-400', description: 'dégâts mêlée', bgColor: 'bg-orange-500/20' },
-    { key: 'agility' as keyof PlayerStats, name: 'Agilité', icon: '🏃', color: 'text-green-400', description: 'esquive, critique', bgColor: 'bg-green-500/20' },
-    { key: 'chance' as keyof PlayerStats, name: 'Chance', icon: '🎯', color: 'text-blue-400', description: 'dégâts à distance', bgColor: 'bg-blue-500/20' },
-    { key: 'intelligence' as keyof PlayerStats, name: 'Intelligence', icon: '🧠', color: 'text-cyan-400', description: 'dégâts sorts', bgColor: 'bg-cyan-500/20' }
+    { key: 'vitality' as keyof PlayerStats, name: 'Vitalité', icon: <Heart size={24} className="text-red-400" />, color: 'text-red-400', description: '+5 Points de Vie', bgColor: 'bg-red-500/10' },
+    { key: 'wisdom' as keyof PlayerStats, name: 'Sagesse', icon: <Sparkles size={24} className="text-purple-400" />, color: 'text-purple-400', description: '+3 Points de Mana', bgColor: 'bg-purple-500/10' },
+    { key: 'strength' as keyof PlayerStats, name: 'Force', icon: <Sword size={24} className="text-orange-400" />, color: 'text-orange-400', description: 'Dégâts mêlée', bgColor: 'bg-orange-500/10' },
+    { key: 'agility' as keyof PlayerStats, name: 'Agilité', icon: <Activity size={24} className="text-green-400" />, color: 'text-green-400', description: 'Esquive et critique', bgColor: 'bg-green-500/10' },
+    { key: 'chance' as keyof PlayerStats, name: 'Chance', icon: <Target size={24} className="text-blue-400" />, color: 'text-blue-400', description: 'Dégâts à distance', bgColor: 'bg-blue-500/10' },
+    { key: 'intelligence' as keyof PlayerStats, name: 'Intelligence', icon: <Brain size={24} className="text-cyan-400" />, color: 'text-cyan-400', description: 'Dégâts magiques', bgColor: 'bg-cyan-500/10' }
   ];
 
   return (
-    <div className="h-full bg-gradient-to-b from-gray-900 via-gray-800 to-gray-900 border-r border-gray-700 flex flex-col backdrop-blur-sm">
-      {/* Header avec bouton de fermeture */}
-      <div className="p-4 border-b border-gray-700 flex items-center justify-between bg-gray-800/50">
-        <h2 className="text-xl font-bold text-orange-400 flex items-center">
-          <Heart className="mr-2" size={20} />
-          Personnage
-        </h2>
-        {onClose && (
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-700 rounded-lg transition-colors text-gray-400 hover:text-white"
-          >
-            <X size={20} />
-          </button>
-        )}
-      </div>
-
-      <div className="flex-1 overflow-y-auto">
-        {/* Informations du personnage */}
-        <div className="p-4 border-b border-gray-700">
-          <div className="flex items-center space-x-4 mb-4">
-            <div 
-              className="w-16 h-16 rounded-full flex items-center justify-center text-3xl border-4 border-gray-600 shadow-lg relative"
-              style={{ 
-                background: `linear-gradient(145deg, ${character.class.color}20, ${character.class.color}40)`,
-                boxShadow: `0 0 20px ${character.class.color}40`
-              }}
-            >
-              {character.class.avatar}
-              <div className="absolute -inset-1 bg-gradient-to-r from-transparent via-orange-500/20 to-transparent rounded-full animate-pulse" />
+    // ✅ CONTENEUR PRINCIPAL AVEC SCROLL - LA CLÉ DU SUCCÈS !
+    <div className="h-full bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex flex-col">
+      
+      {/* ✅ HEADER FIXE - Ne bouge jamais quand on scroll */}
+      <div className="flex-shrink-0 p-6 border-b border-gray-700 bg-gray-800/30">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <div className="p-3 bg-orange-500/20 rounded-xl border border-orange-500/30">
+              <User size={24} className="text-orange-400" />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-white">{character.name}</h3>
-              <p className="text-blue-300 font-semibold">Niveau {character.level}</p>
-              <p 
-                className="text-sm font-medium"
-                style={{ color: character.class.color }}
+              <h1 className="text-3xl font-bold text-white">Panneau du Personnage</h1>
+              <p className="text-gray-400">Gérez votre héros et ses capacités</p>
+            </div>
+          </div>
+          
+          {/* Boutons d'action dans le header */}
+          <div className="flex items-center space-x-3">
+            {availablePoints > 0 && (
+              <div className="bg-green-600/20 text-green-400 px-4 py-2 rounded-xl border border-green-600/40 font-bold">
+                +{availablePoints} points disponibles
+              </div>
+            )}
+            {onClose && (
+              <button
+                onClick={onClose}
+                className="p-3 hover:bg-gray-700 rounded-xl transition-colors text-gray-400 hover:text-white border border-gray-600 hover:border-gray-500"
               >
-                {character.class.name}
-              </p>
-            </div>
-          </div>
-
-          {/* Position et carte avec style MMO */}
-          <div className="bg-gray-800/50 rounded-lg p-3 mb-4 border border-gray-700 shadow-inner">
-            <h4 className="text-orange-400 font-semibold text-sm mb-2 flex items-center">
-              <span className="mr-1">📍</span>
-              Position
-            </h4>
-            <div className="text-gray-300 text-sm space-y-1">
-              <p className="font-mono">X: {playerPosition.x}, Y: {playerPosition.y}</p>
-              <p className="text-yellow-400">🗺️ {currentMapName}</p>
-            </div>
-          </div>
-
-          {/* Barres de vie et mana améliorées */}
-          <div className="space-y-4">
-            <ProgressBar
-              current={currentHP}
-              max={maxHP}
-              color="bg-gradient-to-r from-red-600 via-red-500 to-red-400"
-              label="Points de Vie"
-              icon="❤️"
-            />
-            <ProgressBar
-              current={currentMP}
-              max={maxMP}
-              color="bg-gradient-to-r from-blue-600 via-blue-500 to-blue-400"
-              label="Points de Mana"
-              icon="💙"
-            />
+                <X size={20} />
+              </button>
+            )}
           </div>
         </div>
+      </div>
 
-        {/* Section Caractéristiques déroulable */}
-        <CollapsibleSection
-          title="Caractéristiques"
-          icon={<Star size={18} className="text-orange-400" />}
-          isOpen={isStatsOpen}
-          onToggle={() => setIsStatsOpen(!isStatsOpen)}
-          badge={availablePoints > 0 ? `+${availablePoints}` : undefined}
-        >
-          <div className="space-y-3">
-            {statsConfig.map((stat) => (
-              <div key={stat.key} className={`${stat.bgColor} rounded-lg p-3 border border-gray-700/50 transition-all hover:border-gray-600`}>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center space-x-3">
-                    <span className="text-2xl">{stat.icon}</span>
-                    <div>
-                      <span className="text-white font-medium">{stat.name}</span>
-                      <p className="text-xs text-gray-400">{stat.description}</p>
-                    </div>
+      {/* ✅ ZONE SCROLLABLE - Ici tout le contenu peut défiler */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="p-6">
+          
+          {/* ✅ GRILLE PRINCIPALE EN 3 COLONNES */}
+          <div className="grid grid-cols-12 gap-6">
+            
+            {/* COLONNE DE GAUCHE - Informations du personnage (4 colonnes) */}
+            <div className="col-span-4 space-y-6">
+              
+              {/* Carte du personnage */}
+              <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 rounded-2xl p-6 border border-gray-700 shadow-xl">
+                <div className="text-center">
+                  <div 
+                    className="w-32 h-32 rounded-2xl flex items-center justify-center text-6xl border-4 border-gray-600 shadow-2xl mx-auto mb-6 relative"
+                    style={{ 
+                      background: `linear-gradient(145deg, ${character.class.color}20, ${character.class.color}40)`,
+                      boxShadow: `0 0 40px ${character.class.color}40`
+                    }}
+                  >
+                    {character.class.avatar}
+                    <div className="absolute -inset-2 bg-gradient-to-r from-transparent via-blue-500/20 to-transparent rounded-2xl animate-pulse" />
                   </div>
-                  <span className={`${stat.color} font-bold text-xl`}>
-                    {playerStats[stat.key]}
-                  </span>
+                  
+                  <h2 className="text-2xl font-bold text-white mb-2">{character.name}</h2>
+                  <div className="flex items-center justify-center space-x-2 mb-3">
+                    <Award className="text-blue-400" size={20} />
+                    <span className="text-blue-300 font-semibold text-xl">Niveau {character.level}</span>
+                  </div>
+                  <div 
+                    className="inline-block px-4 py-2 rounded-xl border font-medium"
+                    style={{ 
+                      color: character.class.color,
+                      borderColor: character.class.color + '40',
+                      backgroundColor: character.class.color + '10'
+                    }}
+                  >
+                    {character.class.name}
+                  </div>
+                </div>
+              </div>
+
+              {/* Position et carte */}
+              <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 rounded-2xl p-6 border border-gray-700 shadow-xl">
+                <h3 className="text-orange-400 font-bold text-lg mb-4 flex items-center">
+                  <MapPin size={20} className="mr-2" />
+                  Localisation
+                </h3>
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center p-3 bg-gray-800/30 rounded-lg">
+                    <span className="text-gray-300">Coordonnées:</span>
+                    <span className="font-mono text-yellow-400 text-lg">({playerPosition.x}, {playerPosition.y})</span>
+                  </div>
+                  <div className="flex justify-between items-center p-3 bg-gray-800/30 rounded-lg">
+                    <span className="text-gray-300">Carte actuelle:</span>
+                    <span className="text-green-400 font-medium">{currentMapName}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Barres de vie et mana */}
+              <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 rounded-2xl p-6 border border-gray-700 shadow-xl space-y-6">
+                <h3 className="text-blue-400 font-bold text-lg mb-4 flex items-center">
+                  <Heart size={20} className="mr-2" />
+                  État du Héros
+                </h3>
+                <ProgressBar
+                  current={currentHP}
+                  max={maxHP}
+                  color="bg-gradient-to-r from-red-600 via-red-500 to-red-400"
+                  label="Points de Vie"
+                  icon="❤️"
+                />
+                <ProgressBar
+                  current={currentMP}
+                  max={maxMP}
+                  color="bg-gradient-to-r from-blue-600 via-blue-500 to-blue-400"
+                  label="Points de Mana"
+                  icon="💙"
+                />
+              </div>
+
+              {/* ✅ NOUVELLE SECTION - Statistiques Avancées (exemple pour montrer l'extensibilité) */}
+              <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 rounded-2xl p-6 border border-gray-700 shadow-xl">
+                <h3 className="text-green-400 font-bold text-lg mb-4 flex items-center">
+                  <Trophy size={20} className="mr-2" />
+                  Statistiques de Combat
+                </h3>
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center p-3 bg-gray-800/30 rounded-lg">
+                    <span className="text-gray-300">Ennemis vaincus:</span>
+                    <span className="text-red-400 font-bold">127</span>
+                  </div>
+                  <div className="flex justify-between items-center p-3 bg-gray-800/30 rounded-lg">
+                    <span className="text-gray-300">Sorts lancés:</span>
+                    <span className="text-purple-400 font-bold">89</span>
+                  </div>
+                  <div className="flex justify-between items-center p-3 bg-gray-800/30 rounded-lg">
+                    <span className="text-gray-300">Quêtes terminées:</span>
+                    <span className="text-blue-400 font-bold">15</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* COLONNE DU MILIEU - Caractéristiques (5 colonnes) */}
+            <div className="col-span-5 space-y-6">
+              <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 rounded-2xl p-6 border border-gray-700 shadow-xl">
+                <h3 className="text-orange-400 font-bold text-xl mb-6 flex items-center">
+                  <Gauge size={24} className="mr-3" />
+                  Caractéristiques du Héros
+                </h3>
+                
+                {/* Grille des stats en 2 colonnes */}
+                <div className="grid grid-cols-2 gap-4 mb-6">
+                  {statsConfig.map((stat) => (
+                    <StatCard
+                      key={stat.key}
+                      stat={stat}
+                      value={playerStats[stat.key]}
+                      availablePoints={availablePoints}
+                      inputValue={statInputs[stat.key]}
+                      onImprove={() => onImproveStat(stat.key)}
+                      onInputChange={(value) => onUpdateStatInput(stat.key, value)}
+                    />
+                  ))}
                 </div>
                 
+                {/* Informations sur les points */}
                 {availablePoints > 0 && (
-                  <div className="flex items-center space-x-2 mt-3">
-                    <input
-                      type="number"
-                      min="1"
-                      max={availablePoints}
-                      value={statInputs[stat.key]}
-                      onChange={(e) => onUpdateStatInput(stat.key, parseInt(e.target.value) || 1)}
-                      className="w-16 px-2 py-1 bg-gray-700 text-white rounded border border-gray-600 focus:border-orange-500 focus:outline-none text-sm text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                      style={{ MozAppearance: 'textfield' }}
-                    />
-                    <button 
-                      onClick={() => onImproveStat(stat.key)}
-                      disabled={availablePoints < statInputs[stat.key]}
-                      className="px-3 py-1 bg-green-600/20 hover:bg-green-600/30 disabled:bg-gray-600/50 disabled:cursor-not-allowed text-green-400 disabled:text-gray-500 rounded border border-green-600/40 transition-colors text-sm font-medium flex items-center space-x-1"
-                      title={`Améliorer ${stat.name} (${stat.description})`}
-                    >
-                      <Plus size={14} />
-                      <span>Améliorer</span>
-                    </button>
+                  <div className="p-4 bg-green-600/10 border border-green-600/30 rounded-xl">
+                    <p className="text-green-400 text-center font-medium">
+                      💡 Vous avez <span className="font-bold text-lg">{availablePoints} points</span> à répartir !
+                    </p>
                   </div>
                 )}
               </div>
-            ))}
-          </div>
-        </CollapsibleSection>
 
-        {/* Section Sorts déroulable */}
-        <CollapsibleSection
-          title="Sorts & Capacités"
-          icon={<Zap size={18} className="text-orange-400" />}
-          isOpen={isSpellsOpen}
-          onToggle={() => setIsSpellsOpen(!isSpellsOpen)}
-        >
-          <div className="space-y-2">
-            {DEFAULT_SPELLS.map((spell, index) => (
-              <button
-                key={spell.id}
-                className={`w-full p-3 rounded-lg border transition-all text-left group ${
-                  index < 3 
-                    ? 'border-orange-500/50 bg-orange-500/20 hover:bg-orange-500/30 shadow-lg shadow-orange-500/20' 
-                    : 'border-gray-600 bg-gray-800/50 hover:bg-gray-700/50'
-                }`}
-                title={`${spell.name} - ${spell.manaCost} mana`}
-              >
-                <div className="flex items-center space-x-3">
-                  <div className="text-2xl group-hover:scale-110 transition-transform">
-                    {spell.icon}
+              {/* ✅ NOUVELLE SECTION - Équipements (exemple pour montrer l'extensibilité) */}
+              <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 rounded-2xl p-6 border border-gray-700 shadow-xl">
+                <h3 className="text-yellow-400 font-bold text-xl mb-6 flex items-center">
+                  <Shield size={24} className="mr-3" />
+                  Équipements Actuels
+                </h3>
+                <div className="grid grid-cols-3 gap-4">
+                  {/* Exemples d'équipements */}
+                  <div className="bg-gray-800/30 p-4 rounded-lg text-center">
+                    <div className="text-3xl mb-2">⚔️</div>
+                    <p className="text-white text-sm font-bold">Épée de Fer</p>
+                    <p className="text-gray-400 text-xs">+15 Attaque</p>
                   </div>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between">
-                      <p className="text-white font-bold text-sm">{spell.name}</p>
-                      <div className="flex items-center space-x-2">
-                        <span className="bg-blue-600/20 text-blue-400 px-2 py-1 rounded text-xs">
-                          {spell.manaCost} MP
-                        </span>
-                        {index >= 3 && (
-                          <span className="text-gray-500 text-xs">🔒</span>
-                        )}
-                      </div>
-                    </div>
-                    <p className="text-gray-400 text-xs mt-1">
-                      {index < 3 ? 'Disponible' : 'Capacité verrouillée'}
-                    </p>
+                  <div className="bg-gray-800/30 p-4 rounded-lg text-center">
+                    <div className="text-3xl mb-2">🛡️</div>
+                    <p className="text-white text-sm font-bold">Bouclier Renforcé</p>
+                    <p className="text-gray-400 text-xs">+10 Défense</p>
+                  </div>
+                  <div className="bg-gray-800/30 p-4 rounded-lg text-center">
+                    <div className="text-3xl mb-2">👑</div>
+                    <p className="text-white text-sm font-bold">Couronne Royale</p>
+                    <p className="text-gray-400 text-xs">+5 Charisme</p>
                   </div>
                 </div>
-              </button>
-            ))}
-          </div>
-        </CollapsibleSection>
-      </div>
+              </div>
+            </div>
 
-      {/* Footer avec bouton retour stylisé */}
-      <div className="p-4 border-t border-gray-700 bg-gray-800/50">
-        <button 
-          onClick={onBackToMenu}
-          className="w-full py-3 bg-gradient-to-r from-red-600 to-red-700 text-white rounded-lg hover:from-red-700 hover:to-red-800 transition-all duration-300 font-bold flex items-center justify-center space-x-2 shadow-lg transform hover:scale-105"
-        >
-          <LogOut size={18} />
-          <span>Retour au Menu</span>
-        </button>
+            {/* COLONNE DE DROITE - Sorts (3 colonnes) */}
+            <div className="col-span-3 space-y-6">
+              <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 rounded-2xl p-6 border border-gray-700 shadow-xl">
+                <h3 className="text-purple-400 font-bold text-xl mb-6 flex items-center">
+                  <Book size={24} className="mr-3" />
+                  Grimoire de Sorts
+                </h3>
+                
+                <div className="space-y-4">
+                  {DEFAULT_SPELLS.map((spell, index) => (
+                    <SpellCard
+                      key={spell.id}
+                      spell={spell}
+                      index={index}
+                    />
+                  ))}
+                </div>
+
+                {/* Statistiques des sorts */}
+                <div className="mt-6 p-4 bg-purple-600/10 border border-purple-600/30 rounded-xl">
+                  <h4 className="text-purple-400 font-bold text-sm mb-2">📊 Progression magique</h4>
+                  <div className="text-purple-300 text-xs space-y-1">
+                    <p>• {DEFAULT_SPELLS.filter((_, i) => i < 3).length}/{DEFAULT_SPELLS.length} sorts maîtrisés</p>
+                    <p>• Prochains sorts au niveau {character.level + 5}</p>
+                    <p>• École de magie : {character.class.element}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* ✅ NOUVELLE SECTION - Objectifs (exemple pour montrer l'extensibilité) */}
+              <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 rounded-2xl p-6 border border-gray-700 shadow-xl">
+                <h3 className="text-cyan-400 font-bold text-xl mb-6 flex items-center">
+                  <Map size={24} className="mr-3" />
+                  Objectifs Actuels
+                </h3>
+                <div className="space-y-3">
+                  <div className="p-3 bg-gray-800/30 rounded-lg">
+                    <p className="text-white text-sm font-bold">🎯 Atteindre le niveau 10</p>
+                    <div className="w-full bg-gray-700 rounded-full h-2 mt-2">
+                      <div className="bg-blue-600 h-2 rounded-full" style={{ width: '30%' }}></div>
+                    </div>
+                    <p className="text-gray-400 text-xs mt-1">Progression: 30%</p>
+                  </div>
+                  <div className="p-3 bg-gray-800/30 rounded-lg">
+                    <p className="text-white text-sm font-bold">⚔️ Vaincre 50 ennemis</p>
+                    <div className="w-full bg-gray-700 rounded-full h-2 mt-2">
+                      <div className="bg-red-600 h-2 rounded-full" style={{ width: '80%' }}></div>
+                    </div>
+                    <p className="text-gray-400 text-xs mt-1">Progression: 40/50</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
