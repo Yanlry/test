@@ -1,8 +1,8 @@
 /**
- * COMPOSANT TILED MAP RENDERER - MAP REMONTÉE POUR ÉVITER LA BARRE DE SORTS
- * ✅ CORRIGÉ: Map repositionnée plus haute pour éviter la barre GameUI
- * ✅ CORRIGÉ: Grille parfaitement intégrée au sol
- * ✅ CORRIGÉ: Centrage automatique parfait
+ * COMPOSANT TILED MAP RENDERER - GRILLE PARFAITEMENT ALIGNÉE
+ * ✅ CORRIGÉ: Grille et zones cliquables parfaitement synchronisées
+ * ✅ CORRIGÉ: Plus de décalage de grille
+ * ✅ CORRIGÉ: Zones cliquables limitées à la vraie map
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -91,13 +91,14 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
     ) as TiledLayer || null;
   }, [tiledMap]);
 
-  // Fonction pour vérifier si une case est praticable selon les données Tiled
+  // ✅ CORRIGÉ: Fonction pour vérifier si une case est praticable avec limites strictes
   const isWalkablePosition = useCallback((x: number, y: number): boolean => {
     const floorsLayer = getFloorsLayer();
     if (!floorsLayer) return false;
     
-    // Vérifier les limites
+    // ✅ VÉRIFICATION STRICTE DES LIMITES DE LA MAP
     if (x < 0 || x >= floorsLayer.width || y < 0 || y >= floorsLayer.height) {
+      console.log(`🚫 Position (${x}, ${y}) hors limites de la map ${floorsLayer.width}x${floorsLayer.height}`);
       return false;
     }
     
@@ -105,7 +106,15 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
     const index = y * floorsLayer.width + x;
     const tileId = floorsLayer.data[index];
     
-    return tileId !== 0;
+    // ✅ CORRIGÉ: Vérifier que l'index est valide
+    if (index < 0 || index >= floorsLayer.data.length) {
+      console.log(`🚫 Index ${index} invalide pour (${x}, ${y})`);
+      return false;
+    }
+    
+    const isWalkable = tileId !== 0;
+    console.log(`🔍 Case (${x}, ${y}) index=${index} tileId=${tileId} walkable=${isWalkable}`);
+    return isWalkable;
   }, [getFloorsLayer]);
 
   // Effet pour communiquer les données de praticabilité au parent
@@ -159,7 +168,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
     // Position isométrique du centre de la map
     const { isoX: mapCenterIsoX, isoY: mapCenterIsoY } = calculateIsometricPosition(mapCenterGridX, mapCenterGridY);
     
-    // ✅ NOUVEAU: Décalage pour placer le centre de la map au centre de l'écran
+    // ✅ Décalage pour placer le centre de la map au centre de l'écran
     // MAIS 120px plus haut pour éviter la barre GameUI
     const offsetX = screenCenterX - mapCenterIsoX;
     const offsetY = screenCenterY - mapCenterIsoY - 120; // ← REMONTÉE DE 120px
@@ -183,7 +192,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
     };
   };
 
-  // Rendu des couches avec grille intégrée
+  // ✅ CORRIGÉ: Rendu des couches avec grille parfaitement alignée
   const renderLayer = (layer: TiledLayer): React.ReactNode[] => {
     if (!layer || !layer.visible || !layer.data || !Array.isArray(layer.data)) {
       return [];
@@ -232,7 +241,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
               />
             )}
             
-            {/* Grille intégrée parfaitement dimensionnée */}
+            {/* ✅ GRILLE PARFAITEMENT ALIGNÉE SUR LES ZONES CLIQUABLES */}
             {layer.name === 'Floors' && tileId !== 0 && showGrid && (
               <svg
                 width={DISPLAY_TILE_WIDTH}
@@ -240,7 +249,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
                 className="absolute"
                 style={{
                   left: 0,
-                  top: DISPLAY_TILE_HEIGHT,
+                  top: DISPLAY_TILE_HEIGHT, // ✅ MÊME DÉCALAGE QUE LES ZONES CLIQUABLES
                   pointerEvents: 'none'
                 }}
               >
@@ -261,7 +270,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
     return tiles;
   };
 
-  // Zones cliquables - coordonnées parfaitement synchronisées
+  // ✅ CORRIGÉ: Zones cliquables avec limites strictes de la map
   const renderClickableAreas = (): React.ReactNode[] => {
     if (!tiledMap) return [];
     
@@ -270,12 +279,20 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
     
     const areas: React.ReactNode[] = [];
     
-    // Parcourir la grille de façon identique aux autres fonctions
+    // ✅ PARCOURIR UNIQUEMENT LES CASES VALIDES DE LA MAP
     for (let y = 0; y < floorsLayer.height; y++) {
       for (let x = 0; x < floorsLayer.width; x++) {
         const index = y * floorsLayer.width + x;
+        
+        // ✅ VÉRIFICATION STRICTE DE L'INDEX
+        if (index < 0 || index >= floorsLayer.data.length) {
+          console.warn(`⚠️ Index ${index} invalide pour (${x}, ${y})`);
+          continue;
+        }
+        
         const tileId = floorsLayer.data[index];
         
+        // ✅ CRÉER UNE ZONE CLIQUABLE SEULEMENT SI LA TILE EST PRATICABLE
         if (tileId !== 0) {
           const position = getTileRenderPosition(x, y);
           
@@ -287,7 +304,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
               }`}
               style={{
                 left: position.x,
-                top: position.y,
+                top: position.y + DISPLAY_TILE_HEIGHT, // ✅ MÊME POSITION QUE LA GRILLE
                 width: DISPLAY_TILE_WIDTH,
                 height: DISPLAY_TILE_HEIGHT,
                 zIndex: 1500 + y * 100 + x,
@@ -295,8 +312,13 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
               }}
               onClick={() => {
                 if (!isGamePaused) {
-                  console.log(`🎯 Clic sur case (${x}, ${y}) - Envoi au système de mouvement`);
-                  onTileClick(x, y);
+                  // ✅ DOUBLE VÉRIFICATION AVANT LE CLIC
+                  if (isWalkablePosition(x, y)) {
+                    console.log(`🎯 Clic valide sur case (${x}, ${y}) - Envoi au système de mouvement`);
+                    onTileClick(x, y);
+                  } else {
+                    console.log(`🚫 Clic invalide sur case (${x}, ${y}) - Case non praticable`);
+                  }
                 }
               }}
               onMouseEnter={() => setHoveredTile({x, y})}
@@ -317,6 +339,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
       }
     }
     
+    console.log(`🎯 ${areas.length} zones cliquables créées sur ${floorsLayer.width}x${floorsLayer.height} cases`);
     return areas;
   };
 
@@ -332,7 +355,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
         className="absolute flex items-center justify-center pointer-events-none"
         style={{
           left: playerPosition_render.x,
-          top: playerPosition_render.y,
+          top: playerPosition_render.y + DISPLAY_TILE_HEIGHT, // ✅ MÊME POSITION QUE LA GRILLE
           width: DISPLAY_TILE_WIDTH,
           height: DISPLAY_TILE_HEIGHT,
           zIndex: 2000 + playerPosition.y * 100 + playerPosition.x
@@ -359,7 +382,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
           className="absolute flex items-center justify-center pointer-events-none animate-pulse"
           style={{
             left: targetPosition_render.x,
-            top: targetPosition_render.y,
+            top: targetPosition_render.y + DISPLAY_TILE_HEIGHT, // ✅ MÊME POSITION QUE LA GRILLE
             width: DISPLAY_TILE_WIDTH,
             height: DISPLAY_TILE_HEIGHT,
             zIndex: 1900 + targetPosition.y * 100 + targetPosition.x
@@ -377,7 +400,6 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
   // Recalculer le centrage quand la fenêtre change de taille
   useEffect(() => {
     const handleResize = () => {
-      // Force un re-render pour recalculer le centrage
       if (tiledMap) {
         console.log('📐 Redimensionnement détecté - Recentrage automatique avec map remontée');
       }
@@ -394,7 +416,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
         <div className="text-center text-white">
           <div className="text-4xl mb-4 animate-spin">🌀</div>
           <div className="text-xl">Chargement de la map...</div>
-          <div className="text-gray-400 mt-2">Map remontée pour éviter l'interface...</div>
+          <div className="text-gray-400 mt-2">Correction de l'alignement de la grille...</div>
         </div>
       </div>
     );
@@ -436,7 +458,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
         );
       })}
       
-      {/* Zones cliquables parfaitement synchronisées */}
+      {/* Zones cliquables parfaitement synchronisées avec la grille */}
       <div className="absolute inset-0">
         {renderClickableAreas()}
       </div>
@@ -460,7 +482,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
           {targetPosition && (
             <div className="text-green-400">🎯 Cible: ({targetPosition.x}, {targetPosition.y})</div>
           )}
-          <div className="text-green-400">🔺 MAP REMONTÉE DE 120px</div>
+          <div className="text-green-400">✅ GRILLE PARFAITEMENT ALIGNÉE</div>
           <div className="text-blue-400">🎯 Grille: {showGrid ? 'ON' : 'OFF'}</div>
         </div>
       )}
