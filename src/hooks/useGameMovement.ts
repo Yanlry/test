@@ -1,8 +1,8 @@
 /**
- * HOOK DE DÉPLACEMENT POUR MAP ISOMÉTRIQUE TILED
- * ✅ CORRIGÉ: Utilise maintenant les VRAIES données de praticabilité de Tiled
- * ✅ CORRIGÉ: Plus de cases "fantômes" praticables
- * ✅ CORRIGÉ: Le joueur ne va que sur les vraies tuiles
+ * HOOK DE DÉPLACEMENT CORRIGÉ - AVANCE TOUJOURS VERS L'OBSTACLE
+ * ✅ NOUVEAU: Le personnage avance toujours vers la destination, même bloquée
+ * ✅ CORRIGÉ: Calcule le chemin jusqu'au point le plus proche de l'obstacle
+ * ✅ AMÉLIORATION: Meilleure gestion des destinations inaccessibles
  */
 
 import { useState, useCallback, useEffect } from 'react';
@@ -39,12 +39,11 @@ export const useGameMovement = (avoidanceConfig: ObstacleAvoidanceConfig = DEFAU
   const [currentPath, setCurrentPath] = useState<Position[]>([]);
   const [currentPathIndex, setCurrentPathIndex] = useState(0);
 
-  // ✅ NOUVEAU: État pour stocker la fonction de praticabilité de Tiled
+  // État pour stocker la fonction de praticabilité de Tiled
   const [tiledWalkableFunction, setTiledWalkableFunction] = useState<((x: number, y: number) => boolean) | null>(null);
 
   /**
-   * ✅ NOUVEAU: Fonction pour recevoir les données de praticabilité de Tiled
-   * @param walkableFunction Fonction qui vérifie si une case est praticable selon Tiled
+   * Fonction pour recevoir les données de praticabilité de Tiled
    */
   const setWalkableFunction = useCallback((walkableFunction: (x: number, y: number) => boolean) => {
     console.log('📡 Hook de mouvement: réception des données de praticabilité Tiled');
@@ -52,10 +51,7 @@ export const useGameMovement = (avoidanceConfig: ObstacleAvoidanceConfig = DEFAU
   }, []);
 
   /**
-   * ✅ CORRIGÉ: Utilise maintenant les VRAIES données de praticabilité de Tiled
-   * @param x Coordonnée X (0 à 15)
-   * @param y Coordonnée Y (0 à 15)
-   * @returns true si la case est praticable selon Tiled
+   * Utilise les vraies données de praticabilité de Tiled
    */
   const isValidPosition = useCallback((x: number, y: number): boolean => {
     // Vérifier les limites de la map 16x16
@@ -63,33 +59,128 @@ export const useGameMovement = (avoidanceConfig: ObstacleAvoidanceConfig = DEFAU
       return false;
     }
     
-    // ✅ UTILISER les vraies données de Tiled si disponibles
+    // Utiliser les vraies données de Tiled si disponibles
     if (tiledWalkableFunction) {
       const isWalkable = tiledWalkableFunction(x, y);
-      console.log(`🔍 Vérification praticabilité (${x}, ${y}): ${isWalkable ? '✅ Praticable' : '❌ Bloquée'}`);
       return isWalkable;
     }
     
     // Fallback si les données Tiled ne sont pas encore chargées
-    console.log(`⚠️ Données Tiled non disponibles, fallback pour (${x}, ${y})`);
     return true;
   }, [tiledWalkableFunction]);
 
   /**
-   * ✅ CORRIGÉ: Vérifie si une position est bloquée selon les vraies données Tiled
-   * @param x Coordonnée X
-   * @param y Coordonnée Y
-   * @returns true si la case est bloquée
+   * Vérifie si une position est bloquée selon les vraies données Tiled
    */
   const isPositionBlocked = useCallback((x: number, y: number): boolean => {
     return !isValidPosition(x, y);
   }, [isValidPosition]);
 
   /**
+   * ✅ NOUVELLE FONCTION: Trouve la case la plus proche VERS une destination
+   * Différent de findClosestWalkablePosition - cherche dans la direction de la cible
+   */
+  const findBestReachableTarget = useCallback((targetX: number, targetY: number): Position | null => {
+    console.log(`🎯 Recherche de la meilleure destination vers (${targetX}, ${targetY})...`);
+    
+    // Si la destination est déjà accessible, la retourner
+    if (isValidPosition(targetX, targetY)) {
+      console.log(`✅ Destination (${targetX}, ${targetY}) directement accessible`);
+      return { x: targetX, y: targetY };
+    }
+
+    // ✅ NOUVEAU: Algorithme de recherche directionnel
+    // Au lieu de chercher en spirale, on cherche en ligne droite vers la cible
+    const dx = targetX - playerPosition.x;
+    const dy = targetY - playerPosition.y;
+    const distance = Math.abs(dx) + Math.abs(dy);
+    
+    if (distance === 0) {
+      return null; // Déjà sur place
+    }
+
+    // Normaliser la direction
+    const stepX = dx === 0 ? 0 : dx > 0 ? 1 : -1;
+    const stepY = dy === 0 ? 0 : dy > 0 ? 1 : -1;
+    
+    // Chercher en avançant vers la cible
+    let bestPosition: Position | null = null;
+    let currentX = playerPosition.x;
+    let currentY = playerPosition.y;
+    
+    // Avancer vers la cible case par case
+    for (let step = 1; step <= distance; step++) {
+      // Calculer la prochaine position vers la cible
+      const nextX = playerPosition.x + Math.round((dx * step) / distance);
+      const nextY = playerPosition.y + Math.round((dy * step) / distance);
+      
+      // Vérifier si cette position est accessible
+      if (isValidPosition(nextX, nextY)) {
+        bestPosition = { x: nextX, y: nextY };
+        console.log(`✅ Position accessible trouvée: (${nextX}, ${nextY}) vers la cible`);
+      } else {
+        // On a trouvé un obstacle, retourner la dernière position valide
+        break;
+      }
+    }
+    
+    // Si aucune position n'a été trouvée avec l'approche directionnelle,
+    // utiliser l'ancienne méthode en spirale comme fallback
+    if (!bestPosition) {
+      console.log(`🔍 Recherche en spirale comme fallback...`);
+      return findClosestWalkablePositionSpiral(targetX, targetY);
+    }
+    
+    console.log(`🎯 Meilleure destination trouvée: (${bestPosition.x}, ${bestPosition.y})`);
+    return bestPosition;
+  }, [isValidPosition, playerPosition]);
+
+  /**
+   * ✅ FONCTION DE FALLBACK: Recherche en spirale (ancienne méthode)
+   */
+  const findClosestWalkablePositionSpiral = useCallback((targetX: number, targetY: number): Position | null => {
+    console.log(`🌀 Recherche en spirale autour de (${targetX}, ${targetY})...`);
+
+    // Recherche en spirale pour trouver la case praticable la plus proche
+    let bestDistance = Infinity;
+    let bestPosition: Position | null = null;
+
+    // Recherche dans un rayon croissant
+    for (let radius = 1; radius <= 3; radius++) { // Limité à rayon 3 pour performance
+      for (let dx = -radius; dx <= radius; dx++) {
+        for (let dy = -radius; dy <= radius; dy++) {
+          // Ne vérifier que les cases à la distance exacte du rayon actuel
+          if (Math.abs(dx) !== radius && Math.abs(dy) !== radius) continue;
+
+          const checkX = targetX + dx;
+          const checkY = targetY + dy;
+
+          // Vérifier si cette position est praticable
+          if (isValidPosition(checkX, checkY)) {
+            // Calculer la distance depuis la position du joueur
+            const distanceFromPlayer = Math.abs(checkX - playerPosition.x) + Math.abs(checkY - playerPosition.y);
+            
+            if (distanceFromPlayer < bestDistance && distanceFromPlayer > 0) { // > 0 pour éviter la position actuelle
+              bestDistance = distanceFromPlayer;
+              bestPosition = { x: checkX, y: checkY };
+            }
+          }
+        }
+      }
+
+      // Si on a trouvé une position praticable, la retourner
+      if (bestPosition) {
+
+        return bestPosition;
+      }
+    }
+
+    console.log(`❌ Aucune position praticable trouvée en spirale`);
+    return null;
+  }, [isValidPosition, playerPosition]);
+
+  /**
    * Calcule le nombre d'obstacles adjacents à une position
-   * @param x Coordonnée X
-   * @param y Coordonnée Y
-   * @returns Nombre d'obstacles adjacents
    */
   const countAdjacentObstacles = useCallback((x: number, y: number): number => {
     let obstacleCount = 0;
@@ -109,15 +200,27 @@ export const useGameMovement = (avoidanceConfig: ObstacleAvoidanceConfig = DEFAU
   }, [avoidanceConfig.checkRadius, isPositionBlocked]);
 
   /**
-   * ✅ CORRIGÉ: Algorithme A* utilisant les vraies données de praticabilité Tiled
-   * @param start Position de départ
-   * @param goal Position d'arrivée
-   * @returns Chemin calculé
+   * ✅ ALGORITHME A* AMÉLIORÉ: Trouve toujours un chemin vers la meilleure destination
    */
-  const findPathForIsometricMap = useCallback((start: Position, goal: Position): Position[] => {
-    console.log(`🧭 === CALCUL DE CHEMIN A* ===`);
+  const findPathForIsometricMap = useCallback((start: Position, requestedGoal: Position): Position[] => {
+    console.log(`🧭 === CALCUL DE CHEMIN A* INTELLIGENT ===`);
     console.log(`📍 Départ: (${start.x}, ${start.y})`);
-    console.log(`🎯 Destination: (${goal.x}, ${goal.y})`);
+    console.log(`🎯 Destination demandée: (${requestedGoal.x}, ${requestedGoal.y})`);
+    
+    // ✅ NOUVEAU: Trouve la meilleure destination accessible dans la direction de la cible
+    const actualGoal = findBestReachableTarget(requestedGoal.x, requestedGoal.y);
+    
+    if (!actualGoal) {
+      console.log(`ℹ️ Aucune destination accessible trouvée`);
+      return [];
+    }
+
+    if (actualGoal.x === start.x && actualGoal.y === start.y) {
+      console.log(`ℹ️ Déjà à la destination`);
+      return [];
+    }
+
+    console.log(`🎯 Destination finale: (${actualGoal.x}, ${actualGoal.y})`);
     
     interface AStarNode {
       x: number;
@@ -136,7 +239,6 @@ export const useGameMovement = (avoidanceConfig: ObstacleAvoidanceConfig = DEFAU
     // Calculer le coût d'une case avec pénalité pour proximité des obstacles
     const getCostForTile = (x: number, y: number): number => {
       if (isPositionBlocked(x, y)) {
-        console.log(`🚫 Case (${x}, ${y}) bloquée`);
         return Infinity; // Case bloquée
       }
       
@@ -160,7 +262,7 @@ export const useGameMovement = (avoidanceConfig: ObstacleAvoidanceConfig = DEFAU
       x: start.x,
       y: start.y,
       g: 0,
-      h: heuristic(start, goal),
+      h: heuristic(start, actualGoal),
       f: 0,
       parent: null
     };
@@ -182,7 +284,7 @@ export const useGameMovement = (avoidanceConfig: ObstacleAvoidanceConfig = DEFAU
       closedSet.add(currentKey);
       
       // Vérifier si on a atteint le but
-      if (current.x === goal.x && current.y === goal.y) {
+      if (current.x === actualGoal.x && current.y === actualGoal.y) {
         const path: Position[] = [];
         let node: AStarNode | null = current;
         
@@ -228,7 +330,7 @@ export const useGameMovement = (avoidanceConfig: ObstacleAvoidanceConfig = DEFAU
             x: neighborX,
             y: neighborY,
             g: tentativeG,
-            h: heuristic({ x: neighborX, y: neighborY }, goal),
+            h: heuristic({ x: neighborX, y: neighborY }, actualGoal),
             f: 0,
             parent: current
           };
@@ -242,9 +344,9 @@ export const useGameMovement = (avoidanceConfig: ObstacleAvoidanceConfig = DEFAU
       }
     }
     
-    console.log('❌ Aucun chemin trouvé vers la destination');
+    console.log('❌ Aucun chemin trouvé vers la destination accessible');
     return [];
-  }, [avoidanceConfig, countAdjacentObstacles, isPositionBlocked]);
+  }, [avoidanceConfig, countAdjacentObstacles, isPositionBlocked, findBestReachableTarget]);
 
   // Fonction pour vérifier si une position est un portail
   const isTeleportPosition = useCallback((x: number, y: number): boolean => {
@@ -268,32 +370,46 @@ export const useGameMovement = (avoidanceConfig: ObstacleAvoidanceConfig = DEFAU
     console.log(`📍 Téléportation vers: ${newMap === 'world' ? 'Monde principal' : 'Nouvelle zone'}`);
   }, []);
 
-  // ✅ CORRIGÉ: Fonction pour démarrer un déplacement avec vraie validation
+  /**
+   * ✅ FONCTION DE DÉPLACEMENT AMÉLIORÉE: Force toujours un mouvement
+   */
   const moveToPosition = useCallback((target: Position) => {
-    console.log(`🚀 === DEMANDE DE DÉPLACEMENT ===`);
+    console.log(`🚀 === DEMANDE DE DÉPLACEMENT VERS OBSTACLE ===`);
     console.log(`📍 Position actuelle: (${playerPosition.x}, ${playerPosition.y})`);
     console.log(`🎯 Destination demandée: (${target.x}, ${target.y})`);
     
-    // Calculer le chemin avec l'algorithme A* utilisant les vraies données Tiled
+    // ✅ NOUVEAU: Calcule toujours un chemin, même vers une destination bloquée
     const path = findPathForIsometricMap(playerPosition, target);
     
     if (path.length === 0) {
-      console.log('❌ Impossible de trouver un chemin vers cette destination');
+      console.log('ℹ️ Aucun mouvement possible ou déjà à destination');
       return false;
     }
     
-    setTargetPosition(target);
+    // La vraie destination sera la dernière case du chemin calculé
+    const actualTarget = path[path.length - 1];
+    
+    setTargetPosition(actualTarget);
     setCurrentPath(path);
     setCurrentPathIndex(0);
     setIsMoving(true);
     
     console.log(`✅ Mouvement lancé: ${path.length} cases à parcourir`);
+    console.log(`🎯 Destination finale: (${actualTarget.x}, ${actualTarget.y})`);
+    
+    // ✅ NOUVEAU: Indique si on va exactement où demandé ou près de l'obstacle
+    if (actualTarget.x !== target.x || actualTarget.y !== target.y) {
+      console.log(`🚧 Obstacle détecté - Arrêt prévu devant l'obstacle en (${actualTarget.x}, ${actualTarget.y})`);
+    }
+    
     return true;
   }, [playerPosition, findPathForIsometricMap]);
 
-  // ✅ CORRIGÉ: Fonction pour gérer le clic avec vraie validation
+  /**
+   * ✅ GESTION DU CLIC AMÉLIORÉE: Force toujours un mouvement vers l'obstacle
+   */
   const handleTileClick = useCallback((x: number, y: number) => {
-    console.log(`🎯 === GESTION DU CLIC ===`);
+    console.log(`🎯 === GESTION DU CLIC VERS OBSTACLE ===`);
     console.log(`📍 Case cliquée: (${x}, ${y})`);
     console.log(`🏃 Position actuelle du joueur: (${playerPosition.x}, ${playerPosition.y})`);
     
@@ -303,16 +419,16 @@ export const useGameMovement = (avoidanceConfig: ObstacleAvoidanceConfig = DEFAU
       return;
     }
     
-    // Vérifier si la case est praticable selon les vraies données Tiled
-    if (!isValidPosition(x, y)) {
-      console.log(`🚫 Case (${x}, ${y}) non praticable selon Tiled`);
-      return;
-    }
+    // ✅ NOUVEAU: Force TOUJOURS un mouvement, même vers des obstacles
+    console.log(`✅ Clic accepté - calcul du chemin vers l'obstacle...`);
+    const moveSuccess = moveToPosition({ x, y });
     
-    console.log(`✅ Case (${x}, ${y}) praticable, lancement du mouvement`);
-    // Lancer le mouvement
-    moveToPosition({ x, y });
-  }, [playerPosition, moveToPosition, isValidPosition]);
+    if (moveSuccess) {
+      console.log(`🎮 Mouvement initié vers (${x}, ${y})`);
+    } else {
+      console.log(`❌ Impossible de se déplacer vers (${x}, ${y})`);
+    }
+  }, [playerPosition, moveToPosition]);
 
   // Effect pour gérer l'animation du mouvement (INCHANGÉ)
   useEffect(() => {
@@ -405,7 +521,7 @@ export const useGameMovement = (avoidanceConfig: ObstacleAvoidanceConfig = DEFAU
     stopMovement,
     teleportTo,
     
-    // ✅ NOUVEAU: Fonction pour recevoir les données de praticabilité
+    // Fonction pour recevoir les données de praticabilité
     setWalkableFunction,
     
     // Utilitaires

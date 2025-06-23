@@ -3,9 +3,10 @@
  * ✅ SUPPRIMÉ: Boutons Personnage et Inventaire (maintenant dans GameUI)
  * ✅ GARDÉ: Menu Settings et panneaux plein écran
  * ✅ AJOUTÉ: Callbacks pour GameUI
+ * ✅ NOUVEAU: Debug dans les paramètres avec raccourci D
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 
 // Import du composant Tiled
 import TiledMapRenderer from './TiledMapRenderer';
@@ -29,7 +30,7 @@ import {
 } from '../../utils/gameConstants';
 
 import { Character, PlayerStats, InventoryTab } from '../../types/game';
-import { Pause, Star, X, Settings, Volume2, Grid3X3 } from 'lucide-react';
+import { Pause, Star, X, Settings, Volume2, Grid3X3, Eye } from 'lucide-react';
 
 interface GameMapProps {
   character: Character;
@@ -57,9 +58,10 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
     intelligence: 1,
   });
 
-  // ✅ États pour les paramètres (GARDÉS)
+  // ✅ États pour les paramètres (GARDÉS + NOUVEAU DEBUG)
   const [showGrid, setShowGrid] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [showDebugOverlay, setShowDebugOverlay] = useState(false); // ✅ NOUVEAU: État debug
   const [showSettings, setShowSettings] = useState(false);
 
   // États pour l'interface Dofus
@@ -72,6 +74,22 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
 
   // ✅ isGamePaused basé sur les panneaux plein écran
   const isGamePaused = showFullscreenCharacter || showFullscreenInventory;
+
+  // ✅ NOUVEAU: Gestion du raccourci clavier D pour le debug
+  useEffect(() => {
+    const handleKeyPress = (event: KeyboardEvent) => {
+      if (event.key === 'D' || event.key === 'd') {
+        setShowDebugOverlay(prev => {
+          const newValue = !prev;
+          console.log(`🔍 Debug overlay: ${newValue ? 'ON' : 'OFF'} (raccourci D)`);
+          return newValue;
+        });
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, []);
 
   // Fonctions de gestion des stats
   const handleImproveStat = (statName: keyof PlayerStats, pointsToAdd?: number) => {
@@ -175,7 +193,7 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
           </div>
         )}
 
-        {/* COMPOSANT TILED AVEC COMMUNICATION COMPLÈTE */}
+        {/* COMPOSANT TILED AVEC COMMUNICATION COMPLÈTE ET DEBUG */}
         <TiledMapRenderer
           mapPath={mapPath}
           playerPosition={movement.playerPosition}
@@ -184,12 +202,11 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
           onTileClick={handleTileClick}
           showGrid={showGrid && !isGamePaused}
           isGamePaused={isGamePaused}
+          showDebugOverlay={showDebugOverlay} // ✅ NOUVEAU: Passage de l'état debug
           onMapDataLoaded={handleMapDataLoaded}
         />
 
-        {/* ✅ SUPPRIMÉ: Les boutons Personnage et Inventaire (maintenant dans GameUI) */}
-
-        {/* ✅ MENU PARAMÈTRES EN HAUT À DROITE (GARDÉ) */}
+        {/* ✅ MENU PARAMÈTRES EN HAUT À DROITE AVEC DEBUG (MODIFIÉ) */}
         <div className="absolute top-4 right-4 z-50">
           <button 
             onClick={() => setShowSettings(!showSettings)}
@@ -231,7 +248,7 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
               </div>
 
               {/* Contrôle du son */}
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center space-x-2">
                   <Volume2 size={16} className="text-gray-400" />
                   <span className="text-gray-300 text-sm">Son</span>
@@ -246,6 +263,29 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
                   <div className={`
                     w-4 h-4 bg-white rounded-full absolute top-1 transition-all duration-300
                     ${soundEnabled ? 'left-7' : 'left-1'}
+                  `} />
+                </button>
+              </div>
+
+              {/* ✅ NOUVEAU: Contrôle du debug */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <Eye size={16} className="text-gray-400" />
+                  <span className="text-gray-300 text-sm">Obstacles</span>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowDebugOverlay(!showDebugOverlay);
+                    console.log(`🔍 Debug overlay: ${!showDebugOverlay ? 'ON' : 'OFF'} (depuis paramètres)`);
+                  }}
+                  className={`
+                    w-12 h-6 rounded-full transition-all duration-300 relative
+                    ${showDebugOverlay ? 'bg-red-600' : 'bg-gray-600'}
+                  `}
+                >
+                  <div className={`
+                    w-4 h-4 bg-white rounded-full absolute top-1 transition-all duration-300
+                    ${showDebugOverlay ? 'left-7' : 'left-1'}
                   `} />
                 </button>
               </div>

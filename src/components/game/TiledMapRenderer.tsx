@@ -1,8 +1,8 @@
 /**
- * COMPOSANT TILED MAP RENDERER - GRILLE PARFAITEMENT ALIGNÉE
- * ✅ CORRIGÉ: Grille et zones cliquables parfaitement synchronisées
- * ✅ CORRIGÉ: Plus de décalage de grille
- * ✅ CORRIGÉ: Zones cliquables limitées à la vraie map
+ * COMPOSANT TILED MAP RENDERER - PATHFINDING VERS OBSTACLES
+ * ✅ GARDE: Tout l'affichage qui fonctionne (intact)
+ * ✅ AMÉLIORATION: Debug visuel simplifié - uniquement cases interdites en rouge
+ * ✅ NOUVEAU: Couleurs différentes pour zones accessibles vs bloquées
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -18,6 +18,7 @@ interface TiledMapRendererProps {
   onTileClick: (x: number, y: number) => void;
   showGrid: boolean;
   isGamePaused: boolean;
+  showDebugOverlay: boolean; // ✅ NOUVEAU: Reçu depuis GameMap
   onMapDataLoaded?: (isWalkable: (x: number, y: number) => boolean) => void;
 }
 
@@ -29,6 +30,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
   onTileClick,
   showGrid,
   isGamePaused,
+  showDebugOverlay, // ✅ NOUVEAU: Prop externe
   onMapDataLoaded
 }) => {
   // États pour les données Tiled
@@ -91,41 +93,120 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
     ) as TiledLayer || null;
   }, [tiledMap]);
 
-  // ✅ CORRIGÉ: Fonction pour vérifier si une case est praticable avec limites strictes
+  // ✅ FONCTION DE COLLISION: Vérifie si une case est libre (pour le pathfinding)
   const isWalkablePosition = useCallback((x: number, y: number): boolean => {
-    const floorsLayer = getFloorsLayer();
-    if (!floorsLayer) return false;
+    if (!tiledMap || !tiledMap.layers) return false;
     
-    // ✅ VÉRIFICATION STRICTE DES LIMITES DE LA MAP
-    if (x < 0 || x >= floorsLayer.width || y < 0 || y >= floorsLayer.height) {
-      console.log(`🚫 Position (${x}, ${y}) hors limites de la map ${floorsLayer.width}x${floorsLayer.height}`);
+    // Vérification des limites de la map
+    if (x < 0 || x >= tiledMap.width || y < 0 || y >= tiledMap.height) {
       return false;
     }
     
-    // Calculer l'index de la même façon PARTOUT
-    const index = y * floorsLayer.width + x;
-    const tileId = floorsLayer.data[index];
+    const index = y * tiledMap.width + x;
     
-    // ✅ CORRIGÉ: Vérifier que l'index est valide
-    if (index < 0 || index >= floorsLayer.data.length) {
-      console.log(`🚫 Index ${index} invalide pour (${x}, ${y})`);
-      return false;
+    // Trouver toutes les couches importantes
+    const floorsLayer = tiledMap.layers.find(layer => 
+      layer && typeof layer === 'object' && layer.name === 'Floors'
+    ) as TiledLayer;
+    
+    const foundationsLayer = tiledMap.layers.find(layer => 
+      layer && typeof layer === 'object' && layer.name === 'Foundations'
+    ) as TiledLayer;
+    
+    const propsLayer = tiledMap.layers.find(layer => 
+      layer && typeof layer === 'object' && layer.name === 'Props'
+    ) as TiledLayer;
+    
+    // RÈGLE 1: Il DOIT y avoir un sol (Floors)
+    if (!floorsLayer || !floorsLayer.data || floorsLayer.data[index] === 0) {
+      return false; // Pas de sol = pas praticable
     }
     
-    const isWalkable = tileId !== 0;
-    console.log(`🔍 Case (${x}, ${y}) index=${index} tileId=${tileId} walkable=${isWalkable}`);
-    return isWalkable;
-  }, [getFloorsLayer]);
+    // RÈGLE 2: Il ne doit PAS y avoir de murs/fondations (Foundations)
+    if (foundationsLayer && foundationsLayer.data && foundationsLayer.data[index] !== 0) {
+      return false; // Mur = pas praticable
+    }
+    
+    // RÈGLE 3: Il ne doit PAS y avoir d'objets bloquants (Props)
+    if (propsLayer && propsLayer.data && propsLayer.data[index] !== 0) {
+      return false; // Objet = pas praticable
+    }
+    
+    // RÈGLE 4: Les tapis (Carpets) sont OK, ils n'empêchent pas le mouvement
+    return true; // Toutes les vérifications passées = praticable !
+  }, [tiledMap]);
 
-  // Effet pour communiquer les données de praticabilité au parent
+  // ✅ FONCTION POUR VÉRIFIER SI UNE CASE A DU SOL (pour les zones cliquables)
+  const hasFloorAt = useCallback((x: number, y: number): boolean => {
+    if (!tiledMap || !tiledMap.layers) return false;
+    
+    // Vérification des limites de la map
+    if (x < 0 || x >= tiledMap.width || y < 0 || y >= tiledMap.height) {
+      return false;
+    }
+    
+    const index = y * tiledMap.width + x;
+    
+    // Trouver la couche Floors
+    const floorsLayer = tiledMap.layers.find(layer => 
+      layer && typeof layer === 'object' && layer.name === 'Floors'
+    ) as TiledLayer;
+    
+    // Il y a du sol si la tile n'est pas vide (tileId !== 0)
+    if (floorsLayer && floorsLayer.data && floorsLayer.data[index] !== 0) {
+      return true;
+    }
+    
+    return false;
+  }, [tiledMap]);
+
+  // ✅ NOUVELLE FONCTION: Obtient le type d'obstacle sur une case
+  const getObstacleType = useCallback((x: number, y: number): string => {
+    if (!tiledMap || !tiledMap.layers) return 'unknown';
+    
+    if (x < 0 || x >= tiledMap.width || y < 0 || y >= tiledMap.height) {
+      return 'out-of-bounds';
+    }
+    
+    const index = y * tiledMap.width + x;
+    
+    const floorsLayer = tiledMap.layers.find(layer => 
+      layer && typeof layer === 'object' && layer.name === 'Floors'
+    ) as TiledLayer;
+    
+    const foundationsLayer = tiledMap.layers.find(layer => 
+      layer && typeof layer === 'object' && layer.name === 'Foundations'
+    ) as TiledLayer;
+    
+    const propsLayer = tiledMap.layers.find(layer => 
+      layer && typeof layer === 'object' && layer.name === 'Props'
+    ) as TiledLayer;
+    
+    // Vérifier dans l'ordre
+    if (!floorsLayer || !floorsLayer.data || floorsLayer.data[index] === 0) {
+      return 'no-floor';
+    }
+    
+    if (foundationsLayer && foundationsLayer.data && foundationsLayer.data[index] !== 0) {
+      return 'wall';
+    }
+    
+    if (propsLayer && propsLayer.data && propsLayer.data[index] !== 0) {
+      return 'props';
+    }
+    
+    return 'walkable';
+  }, [tiledMap]);
+
+  // Communiquer les données de collision au système de mouvement
   useEffect(() => {
     if (tiledMap && onMapDataLoaded) {
-      console.log('📡 Communication des données de praticabilité au système de mouvement');
+      console.log('📡 Envoi des données de collision au système de pathfinding');
       onMapDataLoaded(isWalkablePosition);
     }
   }, [tiledMap, isWalkablePosition, onMapDataLoaded]);
 
-  // Fonction pour obtenir l'image d'une tile
+  // Fonction pour obtenir l'image d'une tile (TON CODE ORIGINAL - INTACT)
   const getTileImage = (tileId: number): string | null => {
     if (tileId === 0) return null;
     if (!tiledMap) return null;
@@ -145,43 +226,31 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
     return null;
   };
 
-  // Fonction unique pour tous les calculs isométriques
+  // Fonction unique pour tous les calculs isométriques (TON CODE ORIGINAL - INTACT)
   const calculateIsometricPosition = (gridX: number, gridY: number) => {
     const isoX = (gridX - gridY) * (DISPLAY_TILE_WIDTH / 2);
     const isoY = (gridX + gridY) * (DISPLAY_TILE_HEIGHT / 2);
     return { isoX, isoY };
   };
 
-  // ✅ CENTRAGE REMONTE POUR ÉVITER LA BARRE GAMEUI
+  // Centrage pour éviter la barre GameUI (TON CODE ORIGINAL - INTACT)
   const getCenterOffset = useCallback(() => {
     if (!tiledMap) return { x: 0, y: 0 };
     
-    // 🎯 CENTRE DE L'ÉCRAN
     const screenCenterX = window.innerWidth / 2;
     const screenCenterY = window.innerHeight / 2;
-    
-    // 🎯 CENTRAGE SIMPLE - On centre directement sur le milieu de la map
-    // Le centre de notre map 16x16 sera à la case (8, 8)
     const mapCenterGridX = tiledMap.width / 2;
     const mapCenterGridY = tiledMap.height / 2;
     
-    // Position isométrique du centre de la map
     const { isoX: mapCenterIsoX, isoY: mapCenterIsoY } = calculateIsometricPosition(mapCenterGridX, mapCenterGridY);
     
-    // ✅ Décalage pour placer le centre de la map au centre de l'écran
-    // MAIS 120px plus haut pour éviter la barre GameUI
     const offsetX = screenCenterX - mapCenterIsoX;
-    const offsetY = screenCenterY - mapCenterIsoY - 120; // ← REMONTÉE DE 120px
-    
-    console.log('🎯 CENTRAGE AVEC MAP REMONTÉE:');
-    console.log(`   Écran: ${window.innerWidth} x ${window.innerHeight}`);
-    console.log(`   Centre map: (${mapCenterGridX}, ${mapCenterGridY}) → iso(${mapCenterIsoX}, ${mapCenterIsoY})`);
-    console.log(`   Offset: (${offsetX}, ${offsetY}) - MAP REMONTÉE DE 120px`);
+    const offsetY = screenCenterY - mapCenterIsoY - 120; // Remontée de 120px pour éviter l'UI
     
     return { x: offsetX, y: offsetY };
   }, [tiledMap]);
 
-  // Position de référence unique pour tous les éléments
+  // Position de référence unique pour tous les éléments (TON CODE ORIGINAL - INTACT)
   const getTileRenderPosition = (gridX: number, gridY: number) => {
     const { isoX, isoY } = calculateIsometricPosition(gridX, gridY);
     const centerOffset = getCenterOffset();
@@ -192,7 +261,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
     };
   };
 
-  // ✅ CORRIGÉ: Rendu des couches avec grille parfaitement alignée
+  // Rendu des couches avec tes textures (TON CODE ORIGINAL - INTACT)
   const renderLayer = (layer: TiledLayer): React.ReactNode[] => {
     if (!layer || !layer.visible || !layer.data || !Array.isArray(layer.data)) {
       return [];
@@ -241,7 +310,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
               />
             )}
             
-            {/* ✅ GRILLE PARFAITEMENT ALIGNÉE SUR LES ZONES CLIQUABLES */}
+            {/* Grille parfaitement alignée sur les zones cliquables */}
             {layer.name === 'Floors' && tileId !== 0 && showGrid && (
               <svg
                 width={DISPLAY_TILE_WIDTH}
@@ -249,7 +318,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
                 className="absolute"
                 style={{
                   left: 0,
-                  top: DISPLAY_TILE_HEIGHT, // ✅ MÊME DÉCALAGE QUE LES ZONES CLIQUABLES
+                  top: DISPLAY_TILE_HEIGHT,
                   pointerEvents: 'none'
                 }}
               >
@@ -270,41 +339,52 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
     return tiles;
   };
 
-  // ✅ CORRIGÉ: Zones cliquables avec limites strictes de la map
+  // ✅ ZONES CLIQUABLES AMÉLIORÉES avec debug visuel simplifié
   const renderClickableAreas = (): React.ReactNode[] => {
     if (!tiledMap) return [];
     
-    const floorsLayer = getFloorsLayer();
-    if (!floorsLayer) return [];
-    
     const areas: React.ReactNode[] = [];
+    let walkableCount = 0;
+    let blockedCount = 0;
     
-    // ✅ PARCOURIR UNIQUEMENT LES CASES VALIDES DE LA MAP
-    for (let y = 0; y < floorsLayer.height; y++) {
-      for (let x = 0; x < floorsLayer.width; x++) {
-        const index = y * floorsLayer.width + x;
+    // Parcourir TOUTE LA MAP pour créer des zones cliquables
+    for (let y = 0; y < tiledMap.height; y++) {
+      for (let x = 0; x < tiledMap.width; x++) {
         
-        // ✅ VÉRIFICATION STRICTE DE L'INDEX
-        if (index < 0 || index >= floorsLayer.data.length) {
-          console.warn(`⚠️ Index ${index} invalide pour (${x}, ${y})`);
-          continue;
-        }
-        
-        const tileId = floorsLayer.data[index];
-        
-        // ✅ CRÉER UNE ZONE CLIQUABLE SEULEMENT SI LA TILE EST PRATICABLE
-        if (tileId !== 0) {
+        // Créer une zone cliquable sur toute case avec du sol
+        if (hasFloorAt(x, y)) {
           const position = getTileRenderPosition(x, y);
+          const isWalkable = isWalkablePosition(x, y);
+          const obstacleType = getObstacleType(x, y);
+          
+          if (isWalkable) walkableCount++;
+          else blockedCount++;
+          
+          // ✅ CURSEUR selon l'accessibilité (sans effets visuels de hover)
+          const getClickableStyle = () => {
+            if (isGamePaused) return 'cursor-not-allowed';
+            return 'cursor-pointer'; // Simple curseur pointeur sans couleurs de hover
+          };
+          
+          // ✅ Overlay de debug visuel SIMPLIFIÉ - seulement les cases bloquées en rouge
+          const getDebugOverlay = () => {
+            if (!showDebugOverlay || isWalkable) return null; // ✅ Ne montre que les cases bloquées
+            
+            return (
+              <div 
+                className="absolute inset-0 bg-red-500/40 border border-red-400/70"
+                style={{ clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)' }}
+              />
+            );
+          };
           
           areas.push(
             <div
               key={`click-${x}-${y}`}
-              className={`absolute cursor-pointer transition-all duration-200 ${
-                !isGamePaused ? 'hover:bg-yellow-400/20' : 'cursor-not-allowed'
-              }`}
+              className={`absolute transition-all duration-200 ${getClickableStyle()}`}
               style={{
                 left: position.x,
-                top: position.y + DISPLAY_TILE_HEIGHT, // ✅ MÊME POSITION QUE LA GRILLE
+                top: position.y + DISPLAY_TILE_HEIGHT,
                 width: DISPLAY_TILE_WIDTH,
                 height: DISPLAY_TILE_HEIGHT,
                 zIndex: 1500 + y * 100 + x,
@@ -312,38 +392,27 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
               }}
               onClick={() => {
                 if (!isGamePaused) {
-                  // ✅ DOUBLE VÉRIFICATION AVANT LE CLIC
-                  if (isWalkablePosition(x, y)) {
-                    console.log(`🎯 Clic valide sur case (${x}, ${y}) - Envoi au système de mouvement`);
-                    onTileClick(x, y);
-                  } else {
-                    console.log(`🚫 Clic invalide sur case (${x}, ${y}) - Case non praticable`);
-                  }
+                  console.log(`🎯 Clic sur (${x}, ${y}) - ${obstacleType} - ${isWalkable ? 'Accessible directement' : 'Ira aussi loin que possible'}`);
+                  onTileClick(x, y);
                 }
               }}
               onMouseEnter={() => setHoveredTile({x, y})}
               onMouseLeave={() => setHoveredTile(null)}
-              title={`Tile (${x}, ${y})${isGamePaused ? ' - PAUSE' : ''}`}
+              title={`Destination: (${x}, ${y}) - ${obstacleType} - ${isWalkable ? 'Accessible' : 'Bloqué - ira aussi loin que possible'}${isGamePaused ? ' - PAUSE' : ''}`}
             >
-              {!isGamePaused && (
-                <div 
-                  className="w-full h-full hover:bg-gradient-to-r hover:from-yellow-400/10 hover:to-orange-400/10 transition-all duration-200"
-                  style={{
-                    clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)'
-                  }}
-                />
-              )}
+              {/* ✅ Overlay de debug simplifié */}
+              {getDebugOverlay()}
             </div>
           );
         }
       }
     }
     
-    console.log(`🎯 ${areas.length} zones cliquables créées sur ${floorsLayer.width}x${floorsLayer.height} cases`);
+    console.log(`🎯 ${areas.length} zones cliquables créées (${walkableCount} accessibles, ${blockedCount} bloquées)`);
     return areas;
   };
 
-  // Joueur et cible - coordonnées parfaitement synchronisées
+  // Joueur et cible (TON CODE ORIGINAL - INTACT)
   const renderPlayerAndTarget = (): React.ReactNode[] => {
     const elements: React.ReactNode[] = [];
     
@@ -355,7 +424,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
         className="absolute flex items-center justify-center pointer-events-none"
         style={{
           left: playerPosition_render.x,
-          top: playerPosition_render.y + DISPLAY_TILE_HEIGHT, // ✅ MÊME POSITION QUE LA GRILLE
+          top: playerPosition_render.y + DISPLAY_TILE_HEIGHT,
           width: DISPLAY_TILE_WIDTH,
           height: DISPLAY_TILE_HEIGHT,
           zIndex: 2000 + playerPosition.y * 100 + playerPosition.x
@@ -373,35 +442,17 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
       </div>
     );
     
-    if (targetPosition && isMoving) {
-      const targetPosition_render = getTileRenderPosition(targetPosition.x, targetPosition.y);
-      
-      elements.push(
-        <div
-          key="target"
-          className="absolute flex items-center justify-center pointer-events-none animate-pulse"
-          style={{
-            left: targetPosition_render.x,
-            top: targetPosition_render.y + DISPLAY_TILE_HEIGHT, // ✅ MÊME POSITION QUE LA GRILLE
-            width: DISPLAY_TILE_WIDTH,
-            height: DISPLAY_TILE_HEIGHT,
-            zIndex: 1900 + targetPosition.y * 100 + targetPosition.x
-          }}
-        >
-          <div className="w-8 h-8 border-3 border-green-400 rounded-full animate-ping bg-green-400/20" />
-          <div className="absolute w-4 h-4 bg-green-400 rounded-full" />
-        </div>
-      );
-    }
+    // ✅ SUPPRIMÉ: Indicateur de cible vert lors des clics
+    // Plus d'affichage visuel de la destination
     
     return elements;
   };
 
-  // Recalculer le centrage quand la fenêtre change de taille
+  // Recalculer le centrage quand la fenêtre change de taille (TON CODE ORIGINAL - INTACT)
   useEffect(() => {
     const handleResize = () => {
       if (tiledMap) {
-        console.log('📐 Redimensionnement détecté - Recentrage automatique avec map remontée');
+        console.log('📐 Redimensionnement détecté - Recentrage automatique');
       }
     };
 
@@ -409,20 +460,20 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
     return () => window.removeEventListener('resize', handleResize);
   }, [tiledMap]);
 
-  // Affichage pendant le chargement
+  // Affichage pendant le chargement (TON CODE ORIGINAL - INTACT)
   if (isLoading) {
     return (
       <div className="absolute inset-0 flex items-center justify-center bg-gray-900">
         <div className="text-center text-white">
           <div className="text-4xl mb-4 animate-spin">🌀</div>
           <div className="text-xl">Chargement de la map...</div>
-          <div className="text-gray-400 mt-2">Correction de l'alignement de la grille...</div>
+          <div className="text-gray-400 mt-2">Avec pathfinding vers obstacles...</div>
         </div>
       </div>
     );
   }
 
-  // Affichage en cas d'erreur
+  // Affichage en cas d'erreur (TON CODE ORIGINAL - INTACT)
   if (error) {
     return (
       <div className="absolute inset-0 flex items-center justify-center bg-red-900/20">
@@ -438,14 +489,14 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
     );
   }
 
-  // Affichage final
+  // Affichage final avec debug simplifié
   return (
     <div 
       ref={mapContainerRef}
       className="absolute inset-0 overflow-hidden"
       style={{ backgroundColor: '#2d1810' }}
     >
-      {/* Rendu des couches Tiled avec grille intégrée */}
+      {/* Rendu des couches Tiled avec tes textures */}
       {tiledMap && tiledMap.layers && Array.isArray(tiledMap.layers) && tiledMap.layers.map((layer) => {
         if (!layer || typeof layer !== 'object') {
           return null;
@@ -458,7 +509,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
         );
       })}
       
-      {/* Zones cliquables parfaitement synchronisées avec la grille */}
+      {/* ✅ ZONES CLIQUABLES POUR PATHFINDING VERS OBSTACLES */}
       <div className="absolute inset-0">
         {renderClickableAreas()}
       </div>
@@ -466,24 +517,27 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
       {/* Joueur et cible */}
       {renderPlayerAndTarget()}
       
-      {/* Informations de debug */}
+      {/* Informations de debug améliorées */}
       {process.env.NODE_ENV === 'development' && tiledMap && (
         <div className="absolute top-4 left-4 bg-black/80 text-white p-2 rounded text-xs z-[2000] pointer-events-none">
           <div>Map Tiled: {tiledMap.width}x{tiledMap.height}</div>
           <div>🎮 ZOOM JEU VIDÉO: {DISPLAY_TILE_WIDTH}x{DISPLAY_TILE_HEIGHT}</div>
           <div>📐 Écran: {window.innerWidth}x{window.innerHeight}</div>
           <div>Couches: {tiledMap.layers ? tiledMap.layers.length : 0}</div>
-          <div>Couche Floors: {getFloorsLayer() ? '✅ Trouvée' : '❌ Manquante'}</div>
           <div>Joueur: ({playerPosition.x}, {playerPosition.y})</div>
-          <div>Case joueur praticable: {isWalkablePosition(playerPosition.x, playerPosition.y) ? '✅' : '❌'}</div>
+          <div>Case joueur: {getObstacleType(playerPosition.x, playerPosition.y)} {isWalkablePosition(playerPosition.x, playerPosition.y) ? '✅' : '❌'}</div>
           {hoveredTile && (
-            <div className="text-yellow-400">👆 Survol: ({hoveredTile.x}, {hoveredTile.y})</div>
+            <div className="text-yellow-400">
+              👆 ({hoveredTile.x}, {hoveredTile.y}): {getObstacleType(hoveredTile.x, hoveredTile.y)} {isWalkablePosition(hoveredTile.x, hoveredTile.y) ? '✅ Direct' : '🎯 Vers obstacle'}
+            </div>
           )}
           {targetPosition && (
             <div className="text-green-400">🎯 Cible: ({targetPosition.x}, {targetPosition.y})</div>
           )}
-          <div className="text-green-400">✅ GRILLE PARFAITEMENT ALIGNÉE</div>
+          <div className="text-green-400">✅ PATHFINDING VERS OBSTACLES ACTIVÉ</div>
           <div className="text-blue-400">🎯 Grille: {showGrid ? 'ON' : 'OFF'}</div>
+          <div className="text-purple-400">🎮 Cases cliquables sans effet visuel de hover</div>
+          <div className="text-red-400">🔍 Debug: {showDebugOverlay ? 'ON (cases rouges = bloquées)' : 'OFF'}</div>
         </div>
       )}
     </div>
