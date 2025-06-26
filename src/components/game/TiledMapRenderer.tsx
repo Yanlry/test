@@ -1,14 +1,19 @@
 /**
- * COMPOSANT TILED MAP RENDERER - PATHFINDING VERS OBSTACLES
- * ✅ GARDE: Tout l'affichage qui fonctionne (intact)
- * ✅ AMÉLIORATION: Debug visuel simplifié - uniquement cases interdites en rouge
- * ✅ NOUVEAU: Couleurs différentes pour zones accessibles vs bloquées
+ * COMPOSANT TILED MAP RENDERER - VERSION COMPLÈTE AVEC PORTÉE DES SORTS
+ * ✅ Affiche SEULEMENT les monstres d'exploration quand on explore
+ * ✅ Affiche SEULEMENT les combattants actuels pendant le combat
+ * ✅ Grille de combat tactique style Dofus
+ * ✅ Zones de placement bleues/rouges
+ * ✅ NOUVEAU: Affichage de la portée des sorts sélectionnés
+ * ✅ NOUVEAU: Cases de ciblage colorées selon le type de sort
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { TiledMap, TiledLayer, ParsedTileset } from '../../types/tiled';
 import { loadTiledMap, loadTileset } from '../../utils/tiledLoader';
 import { Position } from '../../types/game';
+import { Monster, CombatState } from '../../types/combat';
+import MonsterComponent from './Monster';
 
 interface TiledMapRendererProps {
   mapPath: string;
@@ -18,8 +23,14 @@ interface TiledMapRendererProps {
   onTileClick: (x: number, y: number) => void;
   showGrid: boolean;
   isGamePaused: boolean;
-  showDebugOverlay: boolean; // ✅ NOUVEAU: Reçu depuis GameMap
+  showDebugOverlay: boolean;
   onMapDataLoaded?: (isWalkable: (x: number, y: number) => boolean) => void;
+  
+  // Props pour le système Dofus
+  explorationMonsters: Monster[]; // Monstres visibles en exploration
+  onMonsterMove: (monsterId: string, newPosition: Position) => void;
+  onMonsterClick: (monster: Monster) => void;
+  combatState: CombatState; // État complet du combat
 }
 
 const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
@@ -30,21 +41,24 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
   onTileClick,
   showGrid,
   isGamePaused,
-  showDebugOverlay, // ✅ NOUVEAU: Prop externe
-  onMapDataLoaded
+  showDebugOverlay,
+  onMapDataLoaded,
+  // Props Dofus
+  explorationMonsters,
+  onMonsterMove,
+  onMonsterClick,
+  combatState
 }) => {
   // États pour les données Tiled
   const [tiledMap, setTiledMap] = useState<TiledMap | null>(null);
   const [tilesets, setTilesets] = useState<Record<string, ParsedTileset>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
-  // État pour afficher les coordonnées de debug
   const [hoveredTile, setHoveredTile] = useState<{x: number, y: number} | null>(null);
   
   const mapContainerRef = useRef<HTMLDivElement>(null);
 
-  // Dimensions d'affichage - ZOOM JEU VIDÉO
+  // Dimensions d'affichage
   const DISPLAY_TILE_WIDTH = 80;
   const DISPLAY_TILE_HEIGHT = 40;
 
@@ -84,27 +98,16 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
     loadMapData();
   }, [mapPath]);
 
-  // Fonction pour trouver la couche Floors
-  const getFloorsLayer = useCallback((): TiledLayer | null => {
-    if (!tiledMap || !tiledMap.layers) return null;
-    
-    return tiledMap.layers.find(layer => 
-      layer && typeof layer === 'object' && layer.name === 'Floors'
-    ) as TiledLayer || null;
-  }, [tiledMap]);
-
-  // ✅ FONCTION DE COLLISION: Vérifie si une case est libre (pour le pathfinding)
+  // Fonctions de collision
   const isWalkablePosition = useCallback((x: number, y: number): boolean => {
     if (!tiledMap || !tiledMap.layers) return false;
     
-    // Vérification des limites de la map
     if (x < 0 || x >= tiledMap.width || y < 0 || y >= tiledMap.height) {
       return false;
     }
     
     const index = y * tiledMap.width + x;
     
-    // Trouver toutes les couches importantes
     const floorsLayer = tiledMap.layers.find(layer => 
       layer && typeof layer === 'object' && layer.name === 'Floors'
     ) as TiledLayer;
@@ -117,42 +120,34 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
       layer && typeof layer === 'object' && layer.name === 'Props'
     ) as TiledLayer;
     
-    // RÈGLE 1: Il DOIT y avoir un sol (Floors)
     if (!floorsLayer || !floorsLayer.data || floorsLayer.data[index] === 0) {
-      return false; // Pas de sol = pas praticable
+      return false;
     }
     
-    // RÈGLE 2: Il ne doit PAS y avoir de murs/fondations (Foundations)
     if (foundationsLayer && foundationsLayer.data && foundationsLayer.data[index] !== 0) {
-      return false; // Mur = pas praticable
+      return false;
     }
     
-    // RÈGLE 3: Il ne doit PAS y avoir d'objets bloquants (Props)
     if (propsLayer && propsLayer.data && propsLayer.data[index] !== 0) {
-      return false; // Objet = pas praticable
+      return false;
     }
     
-    // RÈGLE 4: Les tapis (Carpets) sont OK, ils n'empêchent pas le mouvement
-    return true; // Toutes les vérifications passées = praticable !
+    return true;
   }, [tiledMap]);
 
-  // ✅ FONCTION POUR VÉRIFIER SI UNE CASE A DU SOL (pour les zones cliquables)
   const hasFloorAt = useCallback((x: number, y: number): boolean => {
     if (!tiledMap || !tiledMap.layers) return false;
     
-    // Vérification des limites de la map
     if (x < 0 || x >= tiledMap.width || y < 0 || y >= tiledMap.height) {
       return false;
     }
     
     const index = y * tiledMap.width + x;
     
-    // Trouver la couche Floors
     const floorsLayer = tiledMap.layers.find(layer => 
       layer && typeof layer === 'object' && layer.name === 'Floors'
     ) as TiledLayer;
     
-    // Il y a du sol si la tile n'est pas vide (tileId !== 0)
     if (floorsLayer && floorsLayer.data && floorsLayer.data[index] !== 0) {
       return true;
     }
@@ -160,7 +155,6 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
     return false;
   }, [tiledMap]);
 
-  // ✅ NOUVELLE FONCTION: Obtient le type d'obstacle sur une case
   const getObstacleType = useCallback((x: number, y: number): string => {
     if (!tiledMap || !tiledMap.layers) return 'unknown';
     
@@ -182,7 +176,6 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
       layer && typeof layer === 'object' && layer.name === 'Props'
     ) as TiledLayer;
     
-    // Vérifier dans l'ordre
     if (!floorsLayer || !floorsLayer.data || floorsLayer.data[index] === 0) {
       return 'no-floor';
     }
@@ -198,7 +191,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
     return 'walkable';
   }, [tiledMap]);
 
-  // Communiquer les données de collision au système de mouvement
+  // Communiquer les données de collision
   useEffect(() => {
     if (tiledMap && onMapDataLoaded) {
       console.log('📡 Envoi des données de collision au système de pathfinding');
@@ -206,7 +199,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
     }
   }, [tiledMap, isWalkablePosition, onMapDataLoaded]);
 
-  // Fonction pour obtenir l'image d'une tile (TON CODE ORIGINAL - INTACT)
+  // Fonctions de rendu
   const getTileImage = (tileId: number): string | null => {
     if (tileId === 0) return null;
     if (!tiledMap) return null;
@@ -226,14 +219,12 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
     return null;
   };
 
-  // Fonction unique pour tous les calculs isométriques (TON CODE ORIGINAL - INTACT)
   const calculateIsometricPosition = (gridX: number, gridY: number) => {
     const isoX = (gridX - gridY) * (DISPLAY_TILE_WIDTH / 2);
     const isoY = (gridX + gridY) * (DISPLAY_TILE_HEIGHT / 2);
     return { isoX, isoY };
   };
 
-  // Centrage pour éviter la barre GameUI (TON CODE ORIGINAL - INTACT)
   const getCenterOffset = useCallback(() => {
     if (!tiledMap) return { x: 0, y: 0 };
     
@@ -245,13 +236,12 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
     const { isoX: mapCenterIsoX, isoY: mapCenterIsoY } = calculateIsometricPosition(mapCenterGridX, mapCenterGridY);
     
     const offsetX = screenCenterX - mapCenterIsoX;
-    const offsetY = screenCenterY - mapCenterIsoY - 120; // Remontée de 120px pour éviter l'UI
+    const offsetY = screenCenterY - mapCenterIsoY - 120;
     
     return { x: offsetX, y: offsetY };
   }, [tiledMap]);
 
-  // Position de référence unique pour tous les éléments (TON CODE ORIGINAL - INTACT)
-  const getTileRenderPosition = (gridX: number, gridY: number) => {
+  const getTileRenderPosition = useCallback((gridX: number, gridY: number) => {
     const { isoX, isoY } = calculateIsometricPosition(gridX, gridY);
     const centerOffset = getCenterOffset();
     
@@ -259,9 +249,259 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
       x: isoX + centerOffset.x,
       y: isoY + centerOffset.y
     };
+  }, [getCenterOffset]);
+
+  // Vérifie si une case est dans la portée de mouvement du joueur en combat
+  const isInMovementRange = useCallback((x: number, y: number): boolean => {
+    if (combatState.phase !== 'fighting') return false;
+    
+    const playerCombatant = combatState.combatants.find(c => c.id === 'player');
+    if (!playerCombatant || combatState.currentTurnCombatantId !== 'player') return false;
+    
+    const distance = Math.abs(x - playerCombatant.position.x) + Math.abs(y - playerCombatant.position.y);
+    return distance <= playerCombatant.pm;
+  }, [combatState]);
+
+  // ✅ NOUVEAU: Vérifie si une case est dans la portée du sort sélectionné
+  const isInSpellRange = useCallback((x: number, y: number): boolean => {
+    if (combatState.phase !== 'fighting' || !combatState.selectedSpell) return false;
+    
+    const playerCombatant = combatState.combatants.find(c => c.id === 'player');
+    if (!playerCombatant) return false;
+    
+    const distance = Math.abs(x - playerCombatant.position.x) + Math.abs(y - playerCombatant.position.y);
+    return distance <= combatState.selectedSpell.spell.range;
+  }, [combatState]);
+
+  // ✅ NOUVEAU: Vérifie si une case a une cible valide pour le sort
+  const getSpellTargetType = useCallback((x: number, y: number): 'valid-enemy' | 'valid-ally' | 'empty' | 'invalid' => {
+    if (!combatState.selectedSpell) return 'invalid';
+    
+    const target = combatState.combatants.find(c => 
+      c.position.x === x && c.position.y === y && c.isAlive
+    );
+    
+    const playerCombatant = combatState.combatants.find(c => c.id === 'player');
+    if (!playerCombatant) return 'invalid';
+    
+    const spell = combatState.selectedSpell.spell;
+    
+    if (!target) {
+      // Pas de cible sur cette case
+      if (spell.type === 'heal' && spell.targetType === 'self') {
+        return 'empty'; // Les sorts de soin peuvent être lancés sur une case vide (retour sur soi)
+      }
+      return 'empty';
+    }
+    
+    // Il y a une cible
+    if (spell.targetType === 'enemy' && target.team !== playerCombatant.team) {
+      return 'valid-enemy'; // Ennemi valide pour sort d'attaque
+    }
+    
+    if (spell.targetType === 'self' && target.team === playerCombatant.team) {
+      return 'valid-ally'; // Allié valide pour sort de soin/buff
+    }
+    
+    return 'invalid'; // Cible non valide
+  }, [combatState]);
+
+  // Vérifie si une case est une zone de placement
+  const getPlacementZoneType = useCallback((x: number, y: number): 'player' | 'enemy' | null => {
+    if (combatState.phase !== 'placement') return null;
+    
+    const playerZone = combatState.placementZones.find(z => z.team === 'player');
+    const enemyZone = combatState.placementZones.find(z => z.team === 'enemy');
+    
+    if (playerZone?.positions.some(p => p.x === x && p.y === y)) {
+      return 'player';
+    }
+    
+    if (enemyZone?.positions.some(p => p.x === x && p.y === y)) {
+      return 'enemy';
+    }
+    
+    return null;
+  }, [combatState]);
+
+  // ✅ MODIFIÉ: Rendu de la grille de combat Dofus avec portée des sorts
+  const renderDofusCombatGrid = (): React.ReactNode[] => {
+    if (!tiledMap || combatState.phase === 'exploring') return [];
+    
+    const tiles: React.ReactNode[] = [];
+    
+    for (let y = 0; y < tiledMap.height; y++) {
+      for (let x = 0; x < tiledMap.width; x++) {
+        if (!hasFloorAt(x, y)) continue;
+        
+        const position = getTileRenderPosition(x, y);
+        const placementZone = getPlacementZoneType(x, y);
+        const inMovementRange = isInMovementRange(x, y);
+        const inSpellRange = isInSpellRange(x, y);
+        const spellTargetType = getSpellTargetType(x, y);
+        
+        // Vérifier si la case est occupée par un combattant
+        const occupiedBy = combatState.combatants.find(c => 
+          c.position.x === x && c.position.y === y
+        );
+        
+        // Couleurs de base pour la grille tactique
+        const isEvenTile = (x + y) % 2 === 0;
+        let tileColor = isEvenTile ? 'rgba(180, 180, 180, 0.4)' : 'rgba(140, 140, 140, 0.4)';
+        let borderColor = 'rgba(100, 100, 100, 0.6)';
+        let extraEffects = null;
+        
+        // ✅ PRIORITÉ 1: Affichage de la portée des sorts (le plus important)
+        if (combatState.phase === 'fighting' && combatState.selectedSpell && inSpellRange) {
+          if (spellTargetType === 'valid-enemy') {
+            tileColor = 'rgba(255, 0, 0, 0.8)'; // Rouge vif pour ennemis
+            borderColor = 'rgba(255, 0, 0, 1)';
+            extraEffects = (
+              <circle
+                cx={DISPLAY_TILE_WIDTH/2}
+                cy={DISPLAY_TILE_HEIGHT/2}
+                r="12"
+                fill="rgba(255, 0, 0, 0.7)"
+                className="animate-pulse"
+              />
+            );
+          } else if (spellTargetType === 'valid-ally') {
+            tileColor = 'rgba(0, 255, 0, 0.8)'; // Vert vif pour alliés
+            borderColor = 'rgba(0, 255, 0, 1)';
+            extraEffects = (
+              <circle
+                cx={DISPLAY_TILE_WIDTH/2}
+                cy={DISPLAY_TILE_HEIGHT/2}
+                r="12"
+                fill="rgba(0, 255, 0, 0.7)"
+                className="animate-pulse"
+              />
+            );
+          } else if (spellTargetType === 'empty') {
+            tileColor = 'rgba(128, 0, 128, 0.6)'; // Violet pour cases vides dans la portée
+            borderColor = 'rgba(128, 0, 128, 0.8)';
+            extraEffects = (
+              <circle
+                cx={DISPLAY_TILE_WIDTH/2}
+                cy={DISPLAY_TILE_HEIGHT/2}
+                r="8"
+                fill="rgba(128, 0, 128, 0.6)"
+                className="animate-pulse"
+              />
+            );
+          }
+        }
+        
+        // ✅ PRIORITÉ 2: Zones de placement (si pas de sort sélectionné)
+        else if (combatState.phase === 'placement' && placementZone) {
+          if (placementZone === 'player') {
+            tileColor = 'rgba(59, 130, 246, 0.7)'; // Bleu pour le joueur
+            borderColor = 'rgba(59, 130, 246, 1)';
+            extraEffects = (
+              <circle
+                cx={DISPLAY_TILE_WIDTH/2}
+                cy={DISPLAY_TILE_HEIGHT/2}
+                r="8"
+                fill="rgba(59, 130, 246, 0.8)"
+                className="animate-pulse"
+              />
+            );
+          } else if (placementZone === 'enemy') {
+            tileColor = 'rgba(239, 68, 68, 0.7)'; // Rouge pour l'ennemi
+            borderColor = 'rgba(239, 68, 68, 1)';
+          }
+        } 
+        
+        // ✅ PRIORITÉ 3: Zones de mouvement en combat (si pas de sort et pas placement)
+        else if (combatState.phase === 'fighting') {
+          if (occupiedBy?.id === 'player') {
+            tileColor = 'rgba(59, 130, 246, 0.7)'; // Bleu intense pour le joueur
+            borderColor = 'rgba(59, 130, 246, 1)';
+          } else if (occupiedBy && occupiedBy.id !== 'player') {
+            tileColor = 'rgba(239, 68, 68, 0.7)'; // Rouge intense pour l'ennemi
+            borderColor = 'rgba(239, 68, 68, 1)';
+          } else if (inMovementRange && !combatState.selectedSpell) {
+            tileColor = isEvenTile ? 'rgba(34, 197, 94, 0.5)' : 'rgba(22, 163, 74, 0.5)'; // Vert pour cases accessibles
+            borderColor = 'rgba(34, 197, 94, 0.7)';
+            extraEffects = (
+              <circle
+                cx={DISPLAY_TILE_WIDTH/2}
+                cy={DISPLAY_TILE_HEIGHT/2}
+                r="4"
+                fill="rgba(34, 197, 94, 0.9)"
+                className="animate-pulse"
+              />
+            );
+          }
+        }
+        
+        tiles.push(
+          <div
+            key={`dofus-tile-${x}-${y}`}
+            className="absolute pointer-events-none"
+            style={{
+              left: position.x,
+              top: position.y + DISPLAY_TILE_HEIGHT,
+              width: DISPLAY_TILE_WIDTH,
+              height: DISPLAY_TILE_HEIGHT,
+              zIndex: 900 + y * 100 + x
+            }}
+          >
+            <svg
+              width={DISPLAY_TILE_WIDTH}
+              height={DISPLAY_TILE_HEIGHT}
+              className="absolute"
+            >
+              {/* Case isométrique style Dofus */}
+              <path
+                d={`M ${DISPLAY_TILE_WIDTH/2} 0 L ${DISPLAY_TILE_WIDTH} ${DISPLAY_TILE_HEIGHT/2} L ${DISPLAY_TILE_WIDTH/2} ${DISPLAY_TILE_HEIGHT} L 0 ${DISPLAY_TILE_HEIGHT/2} Z`}
+                fill={tileColor}
+                stroke={borderColor}
+                strokeWidth="1.5"
+              />
+              
+              {/* ✅ Effets visuels spéciaux */}
+              {extraEffects}
+              
+              {/* ✅ NOUVEAU: Texte d'aide pour les zones de placement */}
+              {combatState.phase === 'placement' && placementZone === 'player' && !occupiedBy && (
+                <text
+                  x={DISPLAY_TILE_WIDTH/2}
+                  y={DISPLAY_TILE_HEIGHT/2 + 2}
+                  textAnchor="middle"
+                  fontSize="8"
+                  fill="white"
+                  fontWeight="bold"
+                >
+                  📍
+                </text>
+              )}
+
+              {/* ✅ NOUVEAU: Icônes pour les sorts */}
+              {combatState.phase === 'fighting' && combatState.selectedSpell && inSpellRange && (
+                <text
+                  x={DISPLAY_TILE_WIDTH/2}
+                  y={DISPLAY_TILE_HEIGHT/2 + 3}
+                  textAnchor="middle"
+                  fontSize="10"
+                  fill="white"
+                  fontWeight="bold"
+                >
+                  {spellTargetType === 'valid-enemy' ? '⚔️' : 
+                   spellTargetType === 'valid-ally' ? '💚' : 
+                   '✨'}
+                </text>
+              )}
+            </svg>
+          </div>
+        );
+      }
+    }
+    
+    return tiles;
   };
 
-  // Rendu des couches avec tes textures (TON CODE ORIGINAL - INTACT)
+  // Rendu des couches Tiled (CODE ORIGINAL GARDÉ)
   const renderLayer = (layer: TiledLayer): React.ReactNode[] => {
     if (!layer || !layer.visible || !layer.data || !Array.isArray(layer.data)) {
       return [];
@@ -273,7 +513,6 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
 
     const tiles: React.ReactNode[] = [];
     
-    // Parcourir la grille de façon cohérente
     for (let y = 0; y < layer.height; y++) {
       for (let x = 0; x < layer.width; x++) {
         const index = y * layer.width + x;
@@ -282,7 +521,6 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
         const tileImage = getTileImage(tileId);
         const position = getTileRenderPosition(x, y);
         
-        // Rendu de la tile (même si pas d'image pour les cases vides)
         tiles.push(
           <div
             key={`${layer.name}-${x}-${y}`}
@@ -296,7 +534,6 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
               zIndex: y * 100 + x
             }}
           >
-            {/* Image de la tile si elle existe */}
             {tileImage && (
               <div
                 style={{
@@ -310,8 +547,8 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
               />
             )}
             
-            {/* Grille parfaitement alignée sur les zones cliquables */}
-            {layer.name === 'Floors' && tileId !== 0 && showGrid && (
+            {/* Grille normale (seulement en exploration) */}
+            {layer.name === 'Floors' && tileId !== 0 && showGrid && combatState.phase === 'exploring' && (
               <svg
                 width={DISPLAY_TILE_WIDTH}
                 height={DISPLAY_TILE_HEIGHT}
@@ -339,36 +576,44 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
     return tiles;
   };
 
-  // ✅ ZONES CLIQUABLES AMÉLIORÉES avec debug visuel simplifié
+  // ✅ MODIFIÉ: Zones cliquables avec gestion des sorts
   const renderClickableAreas = (): React.ReactNode[] => {
     if (!tiledMap) return [];
     
     const areas: React.ReactNode[] = [];
-    let walkableCount = 0;
-    let blockedCount = 0;
     
-    // Parcourir TOUTE LA MAP pour créer des zones cliquables
     for (let y = 0; y < tiledMap.height; y++) {
       for (let x = 0; x < tiledMap.width; x++) {
         
-        // Créer une zone cliquable sur toute case avec du sol
         if (hasFloorAt(x, y)) {
           const position = getTileRenderPosition(x, y);
           const isWalkable = isWalkablePosition(x, y);
           const obstacleType = getObstacleType(x, y);
+          const placementZone = getPlacementZoneType(x, y);
+          const inSpellRange = isInSpellRange(x, y);
+          const spellTargetType = getSpellTargetType(x, y);
           
-          if (isWalkable) walkableCount++;
-          else blockedCount++;
-          
-          // ✅ CURSEUR selon l'accessibilité (sans effets visuels de hover)
           const getClickableStyle = () => {
-            if (isGamePaused) return 'cursor-not-allowed';
-            return 'cursor-pointer'; // Simple curseur pointeur sans couleurs de hover
+            if (isGamePaused && combatState.phase === 'exploring') return 'cursor-not-allowed';
+            
+            // ✅ PRIORITÉ 1: Curseur pour sorts
+            if (combatState.phase === 'fighting' && combatState.selectedSpell && inSpellRange) {
+              if (spellTargetType === 'valid-enemy' || spellTargetType === 'valid-ally' || spellTargetType === 'empty') {
+                return 'cursor-crosshair hover:scale-105 transition-transform';
+              }
+              return 'cursor-not-allowed';
+            }
+            
+            // ✅ PRIORITÉ 2: Curseur pour placement
+            if (combatState.phase === 'placement' && placementZone === 'player') {
+              return 'cursor-pointer hover:scale-105 transition-transform';
+            }
+            
+            return 'cursor-pointer';
           };
           
-          // ✅ Overlay de debug visuel SIMPLIFIÉ - seulement les cases bloquées en rouge
           const getDebugOverlay = () => {
-            if (!showDebugOverlay || isWalkable) return null; // ✅ Ne montre que les cases bloquées
+            if (!showDebugOverlay || isWalkable) return null;
             
             return (
               <div 
@@ -376,6 +621,43 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
                 style={{ clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)' }}
               />
             );
+          };
+
+          // ✅ NOUVEAU: Overlay pour sort sélectionné
+          const getSpellOverlay = () => {
+            if (combatState.phase !== 'fighting' || !combatState.selectedSpell || !inSpellRange) return null;
+            
+            let overlayColor = '';
+            if (spellTargetType === 'valid-enemy') {
+              overlayColor = 'bg-red-500/20 border-2 border-red-400';
+            } else if (spellTargetType === 'valid-ally') {
+              overlayColor = 'bg-green-500/20 border-2 border-green-400';
+            } else if (spellTargetType === 'empty') {
+              overlayColor = 'bg-purple-500/20 border-2 border-purple-400';
+            }
+            
+            return (
+              <div 
+                className={`absolute inset-0 ${overlayColor} animate-pulse`}
+                style={{ clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)' }}
+              />
+            );
+          };
+
+          // Overlay pour zones de placement
+          const getPlacementOverlay = () => {
+            if (combatState.phase !== 'placement') return null;
+            
+            if (placementZone === 'player') {
+              return (
+                <div 
+                  className="absolute inset-0 bg-blue-500/30 border-2 border-blue-400 animate-pulse"
+                  style={{ clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)' }}
+                />
+              );
+            }
+            
+            return null;
           };
           
           areas.push(
@@ -391,43 +673,64 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
                 clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)'
               }}
               onClick={() => {
-                if (!isGamePaused) {
-                  console.log(`🎯 Clic sur (${x}, ${y}) - ${obstacleType} - ${isWalkable ? 'Accessible directement' : 'Ira aussi loin que possible'}`);
+                if (!isGamePaused || combatState.phase === 'placement' || 
+                    (combatState.phase === 'fighting' && combatState.selectedSpell)) {
                   onTileClick(x, y);
                 }
               }}
               onMouseEnter={() => setHoveredTile({x, y})}
               onMouseLeave={() => setHoveredTile(null)}
-              title={`Destination: (${x}, ${y}) - ${obstacleType} - ${isWalkable ? 'Accessible' : 'Bloqué - ira aussi loin que possible'}${isGamePaused ? ' - PAUSE' : ''}`}
+              title={
+                combatState.selectedSpell && inSpellRange
+                  ? `${combatState.selectedSpell.spell.name} - ${
+                      spellTargetType === 'valid-enemy' ? 'Ennemi valide' :
+                      spellTargetType === 'valid-ally' ? 'Allié valide' :
+                      spellTargetType === 'empty' ? 'Case vide' : 'Cible invalide'
+                    }`
+                  : combatState.phase === 'placement' && placementZone === 'player' 
+                    ? `(${x}, ${y}) - Zone de placement joueur - Cliquez pour vous placer`
+                    : `(${x}, ${y}) - ${obstacleType} - ${isWalkable ? 'Accessible' : 'Bloqué'}${isGamePaused ? ' - PAUSE' : ''}`
+              }
             >
-              {/* ✅ Overlay de debug simplifié */}
               {getDebugOverlay()}
+              {getSpellOverlay()}
+              {getPlacementOverlay()}
             </div>
           );
         }
       }
     }
     
-    console.log(`🎯 ${areas.length} zones cliquables créées (${walkableCount} accessibles, ${blockedCount} bloquées)`);
     return areas;
   };
 
-  // Joueur et cible (TON CODE ORIGINAL - INTACT)
-  const renderPlayerAndTarget = (): React.ReactNode[] => {
+  // Rendu du joueur selon le contexte (exploration vs combat)
+  const renderPlayer = (): React.ReactNode[] => {
     const elements: React.ReactNode[] = [];
     
-    const playerPosition_render = getTileRenderPosition(playerPosition.x, playerPosition.y);
+    // En exploration : utiliser playerPosition du hook de mouvement
+    // En combat : utiliser la position du combattant joueur
+    let currentPlayerPosition = playerPosition;
+    
+    if (combatState.phase === 'fighting' || combatState.phase === 'placement') {
+      const playerCombatant = combatState.combatants.find(c => c.id === 'player');
+      if (playerCombatant) {
+        currentPlayerPosition = playerCombatant.position;
+      }
+    }
+    
+    const playerRenderPosition = getTileRenderPosition(currentPlayerPosition.x, currentPlayerPosition.y);
     
     elements.push(
       <div
         key="player"
         className="absolute flex items-center justify-center pointer-events-none"
         style={{
-          left: playerPosition_render.x,
-          top: playerPosition_render.y + DISPLAY_TILE_HEIGHT,
+          left: playerRenderPosition.x,
+          top: playerRenderPosition.y + DISPLAY_TILE_HEIGHT,
           width: DISPLAY_TILE_WIDTH,
           height: DISPLAY_TILE_HEIGHT,
-          zIndex: 2000 + playerPosition.y * 100 + playerPosition.x
+          zIndex: 2000 + currentPlayerPosition.y * 100 + currentPlayerPosition.x
         }}
       >
         <div 
@@ -442,13 +745,114 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
       </div>
     );
     
-    // ✅ SUPPRIMÉ: Indicateur de cible vert lors des clics
-    // Plus d'affichage visuel de la destination
-    
     return elements;
   };
 
-  // Recalculer le centrage quand la fenêtre change de taille (TON CODE ORIGINAL - INTACT)
+  // Rendu conditionnel des entités selon la phase
+  const renderEntities = (): React.ReactNode[] => {
+    if (!tiledMap) return [];
+    
+    const entities: React.ReactNode[] = [];
+    
+    // EN EXPLORATION: Afficher les monstres d'exploration uniquement
+    if (combatState.phase === 'exploring') {
+      explorationMonsters
+        .filter(monster => monster.isAlive)
+        .forEach(monster => {
+          entities.push(
+            <MonsterComponent
+              key={monster.id}
+              monster={monster}
+              onMonsterMove={onMonsterMove}
+              onMonsterClick={onMonsterClick}
+              isWalkable={isWalkablePosition}
+              mapWidth={tiledMap.width}
+              mapHeight={tiledMap.height}
+              getTileRenderPosition={getTileRenderPosition}
+              isInCombat={false} // Pas en combat donc les monstres bougent
+            />
+          );
+        });
+    }
+    
+    // EN COMBAT: Afficher SEULEMENT les combattants actuels (sauf le joueur qui est rendu ailleurs)
+    else if (combatState.phase === 'fighting' || combatState.phase === 'placement') {
+      combatState.combatants
+        .filter(combatant => combatant.id !== 'player' && combatant.isAlive)
+        .forEach(combatant => {
+          const renderPosition = getTileRenderPosition(combatant.position.x, combatant.position.y);
+          
+          entities.push(
+            <div
+              key={combatant.id}
+              className="absolute cursor-pointer pointer-events-auto z-[2500] hover:scale-110 transition-transform duration-200"
+              style={{
+                left: renderPosition.x,
+                top: renderPosition.y,
+                width: DISPLAY_TILE_WIDTH,
+                height: DISPLAY_TILE_HEIGHT * 2,
+                zIndex: 2500 + combatant.position.y * 100 + combatant.position.x
+              }}
+              title={`${combatant.name} (${combatant.health}/${combatant.maxHealth} PV)`}
+            >
+              {/* Ombre du combattant */}
+              <div 
+                className="absolute inset-0 rounded-full blur-sm opacity-50 animate-pulse"
+                style={{ 
+                  background: `radial-gradient(circle, ${combatant.color}40 0%, transparent 70%)`,
+                  bottom: '10px'
+                }}
+              />
+              
+              {/* Corps du combattant */}
+              <div className="relative w-full h-full flex flex-col items-center justify-center">
+                <div 
+                  className="text-4xl mb-2 drop-shadow-lg"
+                  style={{ 
+                    color: combatant.color,
+                    filter: `drop-shadow(0 0 8px ${combatant.color})`
+                  }}
+                >
+                  {combatant.icon}
+                </div>
+                
+                <div className="text-white text-xs font-bold bg-gray-900/80 px-2 py-1 rounded border border-gray-600 shadow-lg">
+                  {combatant.name}
+                </div>
+                
+                {/* Barre de vie du combattant */}
+                <div className="w-12 h-1 bg-gray-800 rounded-full mt-1 border border-gray-600 overflow-hidden">
+                  <div 
+                    className="h-full bg-gradient-to-r from-red-600 to-red-400 transition-all duration-300"
+                    style={{ 
+                      width: `${(combatant.health / combatant.maxHealth) * 100}%` 
+                    }}
+                  />
+                </div>
+                
+                {/* Indicateur si c'est son tour */}
+                {combatState.currentTurnCombatantId === combatant.id && (
+                  <div className="absolute -top-2 -right-2 w-6 h-6 bg-yellow-500 rounded-full flex items-center justify-center animate-bounce">
+                    <span className="text-xs font-bold">▶</span>
+                  </div>
+                )}
+
+                {/* Indicateur si l'ennemi est prêt en phase de placement */}
+                {combatState.phase === 'placement' && combatant.isReady && (
+                  <div className="absolute -top-2 -left-2 w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
+                    <span className="text-xs font-bold">✓</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        });
+    }
+    
+    return entities;
+  };
+
+  // Recalculer le centrage
   useEffect(() => {
     const handleResize = () => {
       if (tiledMap) {
@@ -460,20 +864,19 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
     return () => window.removeEventListener('resize', handleResize);
   }, [tiledMap]);
 
-  // Affichage pendant le chargement (TON CODE ORIGINAL - INTACT)
+  // Affichage pendant le chargement
   if (isLoading) {
     return (
       <div className="absolute inset-0 flex items-center justify-center bg-gray-900">
         <div className="text-center text-white">
           <div className="text-4xl mb-4 animate-spin">🌀</div>
           <div className="text-xl">Chargement de la map...</div>
-          <div className="text-gray-400 mt-2">Avec pathfinding vers obstacles...</div>
+          <div className="text-gray-400 mt-2">Avec système de combat Dofus...</div>
         </div>
       </div>
     );
   }
 
-  // Affichage en cas d'erreur (TON CODE ORIGINAL - INTACT)
   if (error) {
     return (
       <div className="absolute inset-0 flex items-center justify-center bg-red-900/20">
@@ -481,22 +884,19 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
           <div className="text-4xl mb-4">❌</div>
           <div className="text-xl mb-2">Erreur de chargement</div>
           <div className="text-gray-300 text-sm">{error}</div>
-          <div className="text-gray-400 text-xs mt-4">
-            Vérifiez que les fichiers Tiled sont dans public/assets/maps/
-          </div>
         </div>
       </div>
     );
   }
 
-  // Affichage final avec debug simplifié
+  // ✅ AFFICHAGE FINAL AVEC SYSTÈME DOFUS COMPLET + PORTÉE DES SORTS
   return (
     <div 
       ref={mapContainerRef}
       className="absolute inset-0 overflow-hidden"
       style={{ backgroundColor: '#2d1810' }}
     >
-      {/* Rendu des couches Tiled avec tes textures */}
+      {/* Rendu des couches Tiled avec textures */}
       {tiledMap && tiledMap.layers && Array.isArray(tiledMap.layers) && tiledMap.layers.map((layer) => {
         if (!layer || typeof layer !== 'object') {
           return null;
@@ -509,35 +909,90 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
         );
       })}
       
-      {/* ✅ ZONES CLIQUABLES POUR PATHFINDING VERS OBSTACLES */}
+      {/* Grille de combat Dofus avec portée des sorts */}
+      {combatState.phase !== 'exploring' && (
+        <div className="absolute inset-0">
+          {renderDofusCombatGrid()}
+        </div>
+      )}
+      
+      {/* Zones cliquables */}
       <div className="absolute inset-0">
         {renderClickableAreas()}
       </div>
       
-      {/* Joueur et cible */}
-      {renderPlayerAndTarget()}
+      {/* Rendu du joueur selon le contexte */}
+      {renderPlayer()}
+      
+      {/* Rendu conditionnel des entités */}
+      <div className="absolute inset-0">
+        {renderEntities()}
+      </div>
       
       {/* Informations de debug améliorées */}
       {process.env.NODE_ENV === 'development' && tiledMap && (
         <div className="absolute top-4 left-4 bg-black/80 text-white p-2 rounded text-xs z-[2000] pointer-events-none">
           <div>Map Tiled: {tiledMap.width}x{tiledMap.height}</div>
-          <div>🎮 ZOOM JEU VIDÉO: {DISPLAY_TILE_WIDTH}x{DISPLAY_TILE_HEIGHT}</div>
-          <div>📐 Écran: {window.innerWidth}x{window.innerHeight}</div>
-          <div>Couches: {tiledMap.layers ? tiledMap.layers.length : 0}</div>
+          <div>🎮 DOFUS: {DISPLAY_TILE_WIDTH}x{DISPLAY_TILE_HEIGHT}</div>
+          <div>Phase: {combatState.phase}</div>
           <div>Joueur: ({playerPosition.x}, {playerPosition.y})</div>
-          <div>Case joueur: {getObstacleType(playerPosition.x, playerPosition.y)} {isWalkablePosition(playerPosition.x, playerPosition.y) ? '✅' : '❌'}</div>
-          {hoveredTile && (
-            <div className="text-yellow-400">
-              👆 ({hoveredTile.x}, {hoveredTile.y}): {getObstacleType(hoveredTile.x, hoveredTile.y)} {isWalkablePosition(hoveredTile.x, hoveredTile.y) ? '✅ Direct' : '🎯 Vers obstacle'}
+          
+          {/* Info de combat */}
+          {combatState.phase === 'fighting' && (
+            <>
+              <div className="text-red-400">
+                ⚔️ COMBAT Tour {combatState.turnNumber}
+              </div>
+              <div className="text-blue-400">
+                Combattants: {combatState.combatants.filter(c => c.isAlive).length}
+              </div>
+              {/* ✅ NOUVEAU: Info du sort sélectionné */}
+              {combatState.selectedSpell && (
+                <div className="text-purple-400">
+                  🔮 Sort: {combatState.selectedSpell.spell.name} (Portée: {combatState.selectedSpell.spell.range})
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Info de placement */}
+          {combatState.phase === 'placement' && (
+            <>
+              <div className="text-orange-400">
+                🎯 PLACEMENT en cours
+              </div>
+              <div className="text-blue-400">
+                Joueur placé: {combatState.combatants.find(c => c.id === 'player')?.startPosition ? 'Oui' : 'Non'}
+              </div>
+            </>
+          )}
+          
+          {/* Info d'exploration */}
+          {combatState.phase === 'exploring' && (
+            <div className="text-green-400">
+              🐲 Monstres: {explorationMonsters.filter(m => m.isAlive).length}
             </div>
           )}
-          {targetPosition && (
-            <div className="text-green-400">🎯 Cible: ({targetPosition.x}, {targetPosition.y})</div>
+          
+          {hoveredTile && (
+            <div className="text-yellow-400">
+              👆 ({hoveredTile.x}, {hoveredTile.y}): {getObstacleType(hoveredTile.x, hoveredTile.y)}
+              {combatState.phase === 'placement' && getPlacementZoneType(hoveredTile.x, hoveredTile.y) && (
+                <span className="ml-1">
+                  - Zone {getPlacementZoneType(hoveredTile.x, hoveredTile.y)}
+                </span>
+              )}
+              {combatState.selectedSpell && isInSpellRange(hoveredTile.x, hoveredTile.y) && (
+                <span className="ml-1">
+                  - Portée: {getSpellTargetType(hoveredTile.x, hoveredTile.y)}
+                </span>
+              )}
+            </div>
           )}
-          <div className="text-green-400">✅ PATHFINDING VERS OBSTACLES ACTIVÉ</div>
-          <div className="text-blue-400">🎯 Grille: {showGrid ? 'ON' : 'OFF'}</div>
-          <div className="text-purple-400">🎮 Cases cliquables sans effet visuel de hover</div>
-          <div className="text-red-400">🔍 Debug: {showDebugOverlay ? 'ON (cases rouges = bloquées)' : 'OFF'}</div>
+          
+          <div className="text-purple-400">
+            ⚔️ Système Dofus: {combatState.phase}
+          </div>
         </div>
       )}
     </div>
