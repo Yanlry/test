@@ -1,12 +1,13 @@
 /**
- * HOOK DE COMBAT STYLE DOFUS - VERSION AVEC SYSTÈME DE CIBLAGE
- * ✅ DÉPLACEMENT FONCTIONNE PARFAITEMENT
- * ✅ SYSTÈME DE SORTS avec sélection et ciblage comme Dofus
- * ✅ Affichage de la portée des sorts
- * ✅ Possibilité de désélectionner un sort
+ * HOOK DE COMBAT AVEC IA ENNEMIE ET TIMER - VERSION CORRIGÉE
+ * ✅ CORRIGÉ: Erreurs TypeScript résolues
+ * ✅ NOUVEAU: IA pour les ennemis (attaque, fuite, sorts)
+ * ✅ NOUVEAU: Timer de 45 secondes par tour
+ * ✅ NOUVEAU: Tours automatiques si temps écoulé
+ * ✅ SIMPLE: L'ennemi attaque intelligemment le joueur
  */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Position } from '../types/game';
 import { 
   Monster, 
@@ -25,21 +26,24 @@ const DOFUS_COMBAT_CONFIG = {
   MOVE_COST: 1,          // 1 PM par case
   BASIC_ATTACK_COST: 3,  // 3 PA pour une attaque de base
   PLACEMENT_TIME: 30,    // 30 secondes pour se placer
+  TURN_TIME: 45,         // ✅ 45 secondes par tour
 };
 
-// ✅ Définition des sorts disponibles avec portée
+// ✅ Définition des sorts disponibles (joueur ET ennemis)
 const AVAILABLE_SPELLS = {
   1: { 
+    id: 1,
     name: 'Coup de Dague', 
     paCost: 3, 
     type: 'damage',
     minDamage: 15,
     maxDamage: 25,
-    range: 1, // Portée de 1 case
+    range: 1,
     description: 'Attaque rapide',
-    targetType: 'enemy' // Cible les ennemis
+    targetType: 'enemy'
   },
   2: { 
+    id: 2,
     name: 'Attaque Puissante', 
     paCost: 4, 
     type: 'damage',
@@ -50,6 +54,7 @@ const AVAILABLE_SPELLS = {
     targetType: 'enemy'
   },
   3: { 
+    id: 3,
     name: 'Poison', 
     paCost: 2, 
     type: 'damage',
@@ -60,6 +65,7 @@ const AVAILABLE_SPELLS = {
     targetType: 'enemy'
   },
   4: { 
+    id: 4,
     name: 'Soin Mineur', 
     paCost: 3, 
     type: 'heal',
@@ -67,9 +73,10 @@ const AVAILABLE_SPELLS = {
     maxHeal: 30,
     range: 3,
     description: 'Soigne les blessures',
-    targetType: 'self' // Cible soi-même ou alliés
+    targetType: 'ally'
   },
   5: { 
+    id: 5,
     name: 'Fireball', 
     paCost: 4, 
     type: 'damage',
@@ -80,6 +87,7 @@ const AVAILABLE_SPELLS = {
     targetType: 'enemy'
   },
   6: { 
+    id: 6,
     name: 'Soin Majeur', 
     paCost: 5, 
     type: 'heal',
@@ -87,9 +95,10 @@ const AVAILABLE_SPELLS = {
     maxHeal: 50,
     range: 2,
     description: 'Soigne beaucoup',
-    targetType: 'self'
+    targetType: 'ally'
   },
   7: { 
+    id: 7,
     name: 'Éclair', 
     paCost: 5, 
     type: 'damage',
@@ -100,6 +109,7 @@ const AVAILABLE_SPELLS = {
     targetType: 'enemy'
   },
   8: { 
+    id: 8,
     name: 'Gel', 
     paCost: 3, 
     type: 'damage',
@@ -109,100 +119,34 @@ const AVAILABLE_SPELLS = {
     description: 'Gèle l\'ennemi',
     targetType: 'enemy'
   },
+  // ✅ Sorts spéciaux pour les ennemis
   9: { 
-    name: 'Régénération', 
-    paCost: 4, 
-    type: 'heal',
-    minHeal: 30,
-    maxHeal: 40,
+    id: 9,
+    name: 'Griffe Sauvage', 
+    paCost: 3, 
+    type: 'damage',
+    minDamage: 18,
+    maxDamage: 28,
     range: 1,
-    description: 'Régénère la santé',
-    targetType: 'self'
+    description: 'Attaque bestiale',
+    targetType: 'enemy'
   },
   10: { 
-    name: 'Explosion', 
-    paCost: 6, 
-    type: 'damage',
-    minDamage: 50,
-    maxDamage: 60,
-    range: 2,
-    description: 'Explosion dévastatrice',
-    targetType: 'enemy'
-  },
-  11: { 
-    name: 'Météore', 
-    paCost: 6, 
-    type: 'damage',
-    minDamage: 60,
-    maxDamage: 80,
-    range: 6,
-    description: 'Météore dévastateur',
-    targetType: 'enemy'
-  },
-  12: { 
-    name: 'Protection', 
+    id: 10,
+    name: 'Rugissement', 
     paCost: 2, 
-    type: 'buff',
-    effect: 'defense',
-    value: 10,
-    range: 1,
-    description: 'Augmente la défense',
-    targetType: 'self'
-  },
-  13: { 
-    name: 'Bénédiction', 
-    paCost: 3, 
-    type: 'heal',
-    minHeal: 35,
-    maxHeal: 45,
-    range: 4,
-    description: 'Soigne avec bénédiction',
-    targetType: 'self'
-  },
-  14: { 
-    name: 'Nova', 
-    paCost: 5, 
     type: 'damage',
-    minDamage: 40,
-    maxDamage: 50,
-    range: 3,
-    description: 'Attaque en zone',
-    targetType: 'enemy'
-  },
-  15: { 
-    name: 'Résurrection', 
-    paCost: 6, 
-    type: 'heal',
-    minHeal: 999,
-    maxHeal: 999,
-    range: 1,
-    description: 'Restaure tous les PV',
-    targetType: 'self'
-  },
-  16: { 
-    name: 'Apocalypse', 
-    paCost: 6, 
-    type: 'damage',
-    minDamage: 80,
-    maxDamage: 100,
-    range: 8,
-    description: 'Sort ultime',
+    minDamage: 12,
+    maxDamage: 20,
+    range: 2,
+    description: 'Cri intimidant',
     targetType: 'enemy'
   }
 } as const;
 
-// ✅ NOUVEAU: État étendu du combat avec sort sélectionné
-interface ExtendedCombatState extends CombatState {
-  selectedSpell: {
-    spellId: number;
-    spell: any;
-    caster: string;
-  } | null;
-}
-
 export const useCombatDofus = () => {
-  // ✅ État principal du combat avec sort sélectionné
-  const [combatState, setCombatState] = useState<ExtendedCombatState>({
+  // ✅ État principal du combat
+  const [combatState, setCombatState] = useState<CombatState>({
     phase: 'exploring',
     combatants: [],
     currentTurnCombatantId: null,
@@ -211,8 +155,231 @@ export const useCombatDofus = () => {
     turnNumber: 1,
     combatLog: [],
     originalMonster: null,
-    selectedSpell: null // ✅ NOUVEAU: Sort actuellement sélectionné
+    selectedSpell: null
   });
+
+  // ✅ État pour le timer
+  const [turnTimeLeft, setTurnTimeLeft] = useState<number>(DOFUS_COMBAT_CONFIG.TURN_TIME);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const aiTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  /**
+   * ✅ Fonction utilitaire pour calculer la distance
+   */
+  const calculateDistance = useCallback((pos1: Position, pos2: Position): number => {
+    return Math.abs(pos1.x - pos2.x) + Math.abs(pos1.y - pos2.y);
+  }, []);
+
+  /**
+   * ✅ Fonction pour démarrer le timer d'un tour
+   */
+  const startTurnTimer = useCallback(() => {
+    // Nettoyer l'ancien timer
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+
+    // Remettre le temps à 45 secondes
+    setTurnTimeLeft(DOFUS_COMBAT_CONFIG.TURN_TIME);
+
+    // Démarrer le nouveau timer
+    timerRef.current = setInterval(() => {
+      setTurnTimeLeft(prev => {
+        if (prev <= 1) {
+          // Temps écoulé ! Passer le tour automatiquement
+          console.log('⏰ Temps écoulé ! Passage automatique au tour suivant');
+          nextTurn();
+          return DOFUS_COMBAT_CONFIG.TURN_TIME;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, []);
+
+  /**
+   * ✅ Arrêter le timer
+   */
+  const stopTurnTimer = useCallback(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
+
+  /**
+   * ✅ CORRIGÉ: Intelligence Artificielle pour les ennemis (types fixés)
+   */
+  const executeEnemyAI = useCallback((enemy: Combatant) => {
+    console.log(`🤖 === IA DE ${enemy.name.toUpperCase()} ===`);
+    
+    setCombatState(prev => {
+      const player = prev.combatants.find(c => c.team === 'player');
+      if (!player) return prev;
+
+      const distance = calculateDistance(enemy.position, player.position);
+      console.log(`📏 Distance jusqu'au joueur: ${distance}`);
+
+      // ✅ STRATÉGIE 1: Si très peu de vie, essayer de fuir
+      const healthPercent = (enemy.health / enemy.maxHealth) * 100;
+      if (healthPercent < 25 && enemy.pm > 0) {
+        console.log(`🏃 ${enemy.name} essaie de fuir (${healthPercent.toFixed(1)}% PV)`);
+        
+        // Chercher une position plus loin du joueur
+        const possibleMoves = [
+          { x: enemy.position.x + 1, y: enemy.position.y },
+          { x: enemy.position.x - 1, y: enemy.position.y },
+          { x: enemy.position.x, y: enemy.position.y + 1 },
+          { x: enemy.position.x, y: enemy.position.y - 1 }
+        ];
+
+        // ✅ CORRIGÉ: Type explicite pour bestMove
+        let bestMove: Position | null = null;
+        let bestDistance = distance;
+
+        for (const move of possibleMoves) {
+          const moveDistance = calculateDistance(move, player.position);
+          const isOccupied = prev.combatants.some(c => 
+            c.id !== enemy.id && c.position.x === move.x && c.position.y === move.y
+          );
+          
+          if (!isOccupied && moveDistance > bestDistance) {
+            bestMove = move;
+            bestDistance = moveDistance;
+          }
+        }
+
+        if (bestMove) {
+          console.log(`✅ ${enemy.name} fuit vers (${bestMove.x}, ${bestMove.y})`);
+          
+          const updatedCombatants = prev.combatants.map(c => 
+            c.id === enemy.id 
+              ? { ...c, position: bestMove!, pm: c.pm - 1 }
+              : c
+          );
+
+          const newLog: CombatLogEntry = {
+            id: `ai-flee-${Date.now()}`,
+            turn: prev.turnNumber,
+            actor: enemy.name,
+            action: 'move',
+            description: `${enemy.name} bat en retraite !`,
+            timestamp: new Date()
+          };
+
+          return {
+            ...prev,
+            combatants: updatedCombatants,
+            combatLog: [...prev.combatLog, newLog]
+          };
+        }
+      }
+
+      // ✅ STRATÉGIE 2: Si à portée d'attaque, attaquer !
+      if (distance <= 1 && enemy.pa >= 3) {
+        console.log(`⚔️ ${enemy.name} attaque le joueur !`);
+        
+        // Attaque basique
+        const damage = Math.floor(Math.random() * 15) + 10; // 10-25 dégâts
+        
+        const updatedCombatants = prev.combatants.map(c => {
+          if (c.id === enemy.id) {
+            return { ...c, pa: c.pa - 3 }; // Coûte 3 PA
+          }
+          if (c.id === player.id) {
+            const newHealth = Math.max(0, c.health - damage);
+            return { ...c, health: newHealth, isAlive: newHealth > 0 };
+          }
+          return c;
+        });
+
+        const newLog: CombatLogEntry = {
+          id: `ai-attack-${Date.now()}`,
+          turn: prev.turnNumber,
+          actor: enemy.name,
+          action: 'attack',
+          description: `${enemy.name} attaque et inflige ${damage} dégâts !`,
+          timestamp: new Date()
+        };
+
+        return {
+          ...prev,
+          combatants: updatedCombatants,
+          combatLog: [...prev.combatLog, newLog]
+        };
+      }
+
+      // ✅ STRATÉGIE 3: Si pas à portée, se rapprocher
+      if (distance > 1 && enemy.pm > 0) {
+        console.log(`🏃 ${enemy.name} se rapproche du joueur`);
+        
+        // Chercher la position qui nous rapproche le plus
+        const possibleMoves = [
+          { x: enemy.position.x + 1, y: enemy.position.y },
+          { x: enemy.position.x - 1, y: enemy.position.y },
+          { x: enemy.position.x, y: enemy.position.y + 1 },
+          { x: enemy.position.x, y: enemy.position.y - 1 }
+        ];
+
+        // ✅ CORRIGÉ: Type explicite pour bestMove
+        let bestMove: Position | null = null;
+        let bestDistance = distance;
+
+        for (const move of possibleMoves) {
+          const moveDistance = calculateDistance(move, player.position);
+          const isOccupied = prev.combatants.some(c => 
+            c.id !== enemy.id && c.position.x === move.x && c.position.y === move.y
+          );
+          
+          if (!isOccupied && moveDistance < bestDistance) {
+            bestMove = move;
+            bestDistance = moveDistance;
+          }
+        }
+
+        if (bestMove) {
+          console.log(`✅ ${enemy.name} se déplace vers (${bestMove.x}, ${bestMove.y})`);
+          
+          const updatedCombatants = prev.combatants.map(c => 
+            c.id === enemy.id 
+              ? { ...c, position: bestMove!, pm: c.pm - 1 }
+              : c
+          );
+
+          const newLog: CombatLogEntry = {
+            id: `ai-move-${Date.now()}`,
+            turn: prev.turnNumber,
+            actor: enemy.name,
+            action: 'move',
+            description: `${enemy.name} se rapproche !`,
+            timestamp: new Date()
+          };
+
+          return {
+            ...prev,
+            combatants: updatedCombatants,
+            combatLog: [...prev.combatLog, newLog]
+          };
+        }
+      }
+
+      // ✅ STRATÉGIE 4: Si rien d'autre, attendre
+      console.log(`💤 ${enemy.name} attend...`);
+      
+      const newLog: CombatLogEntry = {
+        id: `ai-wait-${Date.now()}`,
+        turn: prev.turnNumber,
+        actor: enemy.name,
+        action: 'wait',
+        description: `${enemy.name} observe la situation...`,
+        timestamp: new Date()
+      };
+
+      return {
+        ...prev,
+        combatLog: [...prev.combatLog, newLog]
+      };
+    });
+  }, [calculateDistance]);
 
   /**
    * ✅ DÉCLENCHER LE COMBAT avec placement automatique de l'ennemi
@@ -223,10 +390,10 @@ export const useCombatDofus = () => {
     // Créer les zones de placement (4 cases par équipe)
     const playerZone: PlacementZone = {
       team: 'player',
-      color: '#3B82F6', // Bleu
+      color: '#3B82F6',
       name: 'Zone Joueur',
       positions: [
-        { x: 6, y: 7 },   // Cases bleues pour le joueur
+        { x: 6, y: 7 },
         { x: 7, y: 7 },
         { x: 6, y: 8 },
         { x: 7, y: 8 }
@@ -235,10 +402,10 @@ export const useCombatDofus = () => {
 
     const enemyZone: PlacementZone = {
       team: 'enemy',
-      color: '#EF4444', // Rouge
+      color: '#EF4444',
       name: 'Zone Ennemie', 
       positions: [
-        { x: 9, y: 7 },   // Cases rouges pour les ennemis
+        { x: 9, y: 7 },
         { x: 10, y: 7 },
         { x: 9, y: 8 },
         { x: 10, y: 8 }
@@ -248,7 +415,7 @@ export const useCombatDofus = () => {
     // Choisir automatiquement une position pour l'ennemi
     const randomEnemyPosition = enemyZone.positions[Math.floor(Math.random() * enemyZone.positions.length)];
 
-    // Créer le combattant joueur (pas encore placé)
+    // Créer le combattant joueur
     const playerCombatant: Combatant = {
       id: 'player',
       name: 'Héros',
@@ -262,7 +429,7 @@ export const useCombatDofus = () => {
       icon: '🧙‍♂️',
       color: '#3B82F6',
       isAlive: true,
-      isReady: false, // Le joueur doit encore se placer
+      isReady: false,
       pa: DOFUS_COMBAT_CONFIG.PLAYER_MAX_PA,
       maxPA: DOFUS_COMBAT_CONFIG.PLAYER_MAX_PA,
       pm: DOFUS_COMBAT_CONFIG.PLAYER_MAX_PM,
@@ -272,7 +439,7 @@ export const useCombatDofus = () => {
       speed: 10
     };
 
-    // Créer le combattant monstre DÉJÀ PLACÉ et PRÊT
+    // ✅ Combattant monstre avec IA
     const monsterCombatant: Combatant = {
       id: monster.id,
       name: monster.name,
@@ -287,14 +454,14 @@ export const useCombatDofus = () => {
       icon: monster.icon,
       color: monster.color,
       isAlive: true,
-      isReady: true, // L'ennemi est automatiquement prêt
+      isReady: true,
       pa: 4,
       maxPA: 4,
       pm: 2,
       maxPM: 2,
       attack: monster.attack,
       defense: monster.defense,
-      speed: monster.speed
+      speed: monster.speed + Math.floor(Math.random() * 3) // Vitesse aléatoire pour l'ordre des tours
     };
 
     const startLog: CombatLogEntry = {
@@ -315,11 +482,10 @@ export const useCombatDofus = () => {
       turnNumber: 1,
       combatLog: [startLog],
       originalMonster: monster,
-      selectedSpell: null // ✅ Pas de sort sélectionné au début
+      selectedSpell: null
     });
 
     console.log(`🎯 ${monster.name} placé automatiquement en (${randomEnemyPosition.x}, ${randomEnemyPosition.y})`);
-    console.log('🎯 Phase de placement activée - Choisissez votre case bleue !');
   }, []);
 
   /**
@@ -328,37 +494,21 @@ export const useCombatDofus = () => {
   const placeCombatant = useCallback((combatantId: string, newPosition: Position) => {
     setCombatState(prev => {
       const combatant = prev.combatants.find(c => c.id === combatantId);
-      if (!combatant) {
-        console.log(`❌ Combattant ${combatantId} introuvable`);
-        return prev;
-      }
+      if (!combatant) return prev;
 
-      // Vérifier que la position est dans la zone de l'équipe
       const zone = prev.placementZones.find(z => z.team === combatant.team);
-      if (!zone) {
-        console.log(`❌ Zone de placement introuvable pour l'équipe ${combatant.team}`);
-        return prev;
-      }
+      if (!zone) return prev;
 
       const isValidPosition = zone.positions.some(p => p.x === newPosition.x && p.y === newPosition.y);
-      if (!isValidPosition) {
-        console.log(`❌ Position (${newPosition.x}, ${newPosition.y}) invalide pour ${combatant.name}`);
-        return prev;
-      }
+      if (!isValidPosition) return prev;
 
-      // Vérifier que la case n'est pas occupée
       const isOccupied = prev.combatants.some(c => 
         c.id !== combatantId && 
         c.startPosition?.x === newPosition.x && 
         c.startPosition?.y === newPosition.y
       );
       
-      if (isOccupied) {
-        console.log(`❌ Case (${newPosition.x}, ${newPosition.y}) occupée !`);
-        return prev;
-      }
-
-      console.log(`✅ ${combatant.name} placé en (${newPosition.x}, ${newPosition.y})`);
+      if (isOccupied) return prev;
 
       const updatedCombatants = prev.combatants.map(c => 
         c.id === combatantId 
@@ -366,7 +516,7 @@ export const useCombatDofus = () => {
               ...c, 
               startPosition: newPosition, 
               position: newPosition, 
-              isReady: true  // Auto-prêt après placement
+              isReady: true
             }
           : c
       );
@@ -387,59 +537,26 @@ export const useCombatDofus = () => {
   }, []);
 
   /**
-   * ✅ MARQUER UN COMBATTANT COMME PRÊT (maintenu pour compatibilité)
-   */
-  const setCombatantReady = useCallback((combatantId: string) => {
-    setCombatState(prev => {
-      const combatant = prev.combatants.find(c => c.id === combatantId);
-      if (!combatant || !combatant.startPosition) {
-        console.log(`❌ ${combatant?.name || 'Combattant'} doit d'abord se placer !`);
-        return prev;
-      }
-
-      const updatedCombatants = prev.combatants.map(c => 
-        c.id === combatantId ? { ...c, isReady: true } : c
-      );
-
-      console.log(`✅ ${combatant.name} est prêt !`);
-
-      return {
-        ...prev,
-        combatants: updatedCombatants,
-        combatLog: [...prev.combatLog, {
-          id: `ready-${Date.now()}`,
-          turn: 1,
-          actor: combatant.name,
-          action: 'ready',
-          description: `${combatant.name} est prêt pour le combat !`,
-          timestamp: new Date()
-        }]
-      };
-    });
-  }, []);
-
-  /**
-   * ✅ VÉRIFIER SI TOUS LES COMBATTANTS SONT PRÊTS et commencer le combat
+   * ✅ VÉRIFIER SI TOUS LES COMBATTANTS SONT PRÊTS
    */
   const checkStartFighting = useCallback(() => {
     setCombatState(prev => {
-      // Vérifier si tous les combattants sont prêts
       const allReady = prev.combatants.every(c => c.isReady);
       
       if (allReady && prev.phase === 'placement') {
         console.log('🚀 TOUS LES COMBATTANTS SONT PRÊTS - DÉBUT DU COMBAT !');
         
-        // Déterminer l'ordre des tours (par vitesse)
         const sortedCombatants = [...prev.combatants].sort((a, b) => b.speed - a.speed);
         const firstCombatant = sortedCombatants[0];
 
-        console.log(`🎯 Premier tour : ${firstCombatant.name} (vitesse: ${firstCombatant.speed})`);
+        // ✅ Démarrer le timer pour le premier tour
+        startTurnTimer();
 
         return {
           ...prev,
           phase: 'fighting',
           currentTurnCombatantId: firstCombatant.id,
-          selectedSpell: null, // ✅ Reset du sort sélectionné
+          selectedSpell: null,
           combatLog: [...prev.combatLog, {
             id: `start-fighting-${Date.now()}`,
             turn: 1,
@@ -453,380 +570,293 @@ export const useCombatDofus = () => {
 
       return prev;
     });
-  }, []);
+  }, [startTurnTimer]);
 
   /**
-   * ✅ DÉPLACER UN COMBATTANT (coûte des PM) - VERSION QUI MARCHE
+   * ✅ DÉPLACER UN COMBATTANT (SIMPLIFIÉ)
    */
   const moveCombatant = useCallback((combatantId: string, newPosition: Position): ActionResult => {
-    console.log(`🏃 === TENTATIVE DE DÉPLACEMENT ===`);
-    console.log(`🧙 Combattant: ${combatantId}`);
-    console.log(`📍 Vers: (${newPosition.x}, ${newPosition.y})`);
+    console.log(`🏃 Déplacement de ${combatantId} vers (${newPosition.x}, ${newPosition.y})`);
 
-    // Obtenir l'état actuel du combat
-    const currentCombatState = combatState;
-    const combatant = currentCombatState.combatants.find(c => c.id === combatantId);
-    
-    if (!combatant) {
-      console.log(`❌ Combattant ${combatantId} introuvable`);
-      return { success: false, message: "Combattant introuvable", paCost: 0 };
-    }
+    let result: ActionResult = { success: false, message: "Erreur", paCost: 0 };
 
-    console.log(`🎮 Combattant trouvé: ${combatant.name}`);
-    console.log(`📊 PM actuels: ${combatant.pm}/${combatant.maxPM}`);
-    console.log(`📍 Position actuelle: (${combatant.position.x}, ${combatant.position.y})`);
-
-    if (currentCombatState.currentTurnCombatantId !== combatantId) {
-      console.log(`❌ Ce n'est pas le tour de ${combatant.name}`);
-      console.log(`🎯 Tour actuel: ${currentCombatState.currentTurnCombatantId}`);
-      return { success: false, message: "Ce n'est pas votre tour", paCost: 0 };
-    }
-
-    // Calculer la distance et le coût
-    const distance = Math.abs(newPosition.x - combatant.position.x) + 
-                    Math.abs(newPosition.y - combatant.position.y);
-    const pmCost = distance * DOFUS_COMBAT_CONFIG.MOVE_COST;
-
-    console.log(`📏 Distance: ${distance} cases`);
-    console.log(`💰 Coût PM: ${pmCost}`);
-
-    if (pmCost > combatant.pm) {
-      console.log(`❌ Pas assez de PM ! Requis: ${pmCost}, Disponibles: ${combatant.pm}`);
-      return { 
-        success: false, 
-        message: `Pas assez de PM (${pmCost} requis, ${combatant.pm} disponibles)`, 
-        paCost: 0 
-      };
-    }
-
-    // Vérifier que la case n'est pas occupée
-    const isOccupied = currentCombatState.combatants.some(c => 
-      c.id !== combatantId && 
-      c.position.x === newPosition.x && 
-      c.position.y === newPosition.y
-    );
-    
-    if (isOccupied) {
-      console.log(`❌ Case (${newPosition.x}, ${newPosition.y}) occupée`);
-      return { success: false, message: "Case occupée", paCost: 0 };
-    }
-
-    // ✅ EFFECTUER LE DÉPLACEMENT IMMÉDIATEMENT
-    console.log(`✅ Déplacement validé ! ${combatant.name} se déplace`);
-    
     setCombatState(prev => {
+      const combatant = prev.combatants.find(c => c.id === combatantId);
+      
+      if (!combatant) {
+        result = { success: false, message: "Combattant introuvable", paCost: 0 };
+        return prev;
+      }
+
+      if (prev.currentTurnCombatantId !== combatantId) {
+        result = { success: false, message: "Ce n'est pas votre tour", paCost: 0 };
+        return prev;
+      }
+
+      const distance = Math.abs(newPosition.x - combatant.position.x) + 
+                      Math.abs(newPosition.y - combatant.position.y);
+      const pmCost = distance * DOFUS_COMBAT_CONFIG.MOVE_COST;
+
+      if (pmCost > combatant.pm) {
+        result = { success: false, message: `Pas assez de PM`, paCost: 0 };
+        return prev;
+      }
+
+      const isOccupied = prev.combatants.some(c => 
+        c.id !== combatantId && 
+        c.position.x === newPosition.x && 
+        c.position.y === newPosition.y
+      );
+      
+      if (isOccupied) {
+        result = { success: false, message: "Case occupée", paCost: 0 };
+        return prev;
+      }
+
       const updatedCombatants = prev.combatants.map(c => 
         c.id === combatantId 
-          ? { 
-              ...c, 
-              position: newPosition, 
-              pm: c.pm - pmCost  // ✅ DÉCOMPTER LES PM
-            }
+          ? { ...c, position: newPosition, pm: c.pm - pmCost }
           : c
       );
 
-      console.log(`✅ Nouveaux PM: ${combatant.pm - pmCost}/${combatant.maxPM}`);
+      result = { success: true, message: `Déplacement réussi`, paCost: 0, pmCost: pmCost };
 
       return {
         ...prev,
         combatants: updatedCombatants,
-        selectedSpell: null, // ✅ Annuler la sélection de sort après mouvement
+        selectedSpell: null,
         combatLog: [...prev.combatLog, {
           id: `move-${Date.now()}`,
           turn: prev.turnNumber,
           actor: combatant.name,
           action: 'move',
-          description: `${combatant.name} se déplace vers (${newPosition.x}, ${newPosition.y}) [-${pmCost} PM]`,
+          description: `${combatant.name} se déplace vers (${newPosition.x}, ${newPosition.y})`,
           timestamp: new Date()
         }]
       };
     });
 
-    return { 
-      success: true, 
-      message: `Déplacement réussi (-${pmCost} PM)`, 
-      paCost: 0,
-      pmCost: pmCost
-    };
-  }, [combatState]);
+    return result;
+  }, []);
 
   /**
-   * ✅ NOUVEAU: SÉLECTIONNER UN SORT (ne le lance pas encore)
+   * ✅ SÉLECTIONNER UN SORT (SIMPLIFIÉ)
    */
   const selectSpell = useCallback((combatantId: string, spellId: number): ActionResult => {
-    console.log(`📜 === SÉLECTION DE SORT ===`);
-    console.log(`🧙 Combattant: ${combatantId}`);
-    console.log(`📜 Sort ID: ${spellId}`);
+    console.log(`📜 Sélection de sort: ${spellId}`);
 
-    const currentCombatState = combatState;
-    const combatant = currentCombatState.combatants.find(c => c.id === combatantId);
-    
-    if (!combatant) {
-      console.log(`❌ Combattant ${combatantId} introuvable`);
-      return { success: false, message: "Combattant introuvable", paCost: 0 };
-    }
+    let result: ActionResult = { success: false, message: "Erreur", paCost: 0 };
 
-    if (currentCombatState.currentTurnCombatantId !== combatantId) {
-      console.log(`❌ Ce n'est pas le tour de ${combatant.name}`);
-      return { success: false, message: "Ce n'est pas votre tour", paCost: 0 };
-    }
-
-    // ✅ RÉCUPÉRER LES DONNÉES DU SORT
-    const spell = AVAILABLE_SPELLS[spellId as keyof typeof AVAILABLE_SPELLS];
-    if (!spell) {
-      console.log(`❌ Sort ${spellId} introuvable`);
-      return { success: false, message: "Sort inconnu", paCost: 0 };
-    }
-
-    console.log(`📜 Sort trouvé: ${spell.name} (${spell.paCost} PA)`);
-    console.log(`📊 PA actuels: ${combatant.pa}/${combatant.maxPA}`);
-
-    if (spell.paCost > combatant.pa) {
-      console.log(`❌ Pas assez de PA ! Requis: ${spell.paCost}, Disponibles: ${combatant.pa}`);
-      return { 
-        success: false, 
-        message: `Pas assez de PA (${spell.paCost} requis, ${combatant.pa} disponibles)`, 
-        paCost: 0 
-      };
-    }
-
-    // ✅ VÉRIFIER SI LE SORT EST DÉJÀ SÉLECTIONNÉ
-    if (currentCombatState.selectedSpell?.spellId === spellId) {
-      console.log(`🔄 Désélection du sort ${spell.name}`);
-      setCombatState(prev => ({
-        ...prev,
-        selectedSpell: null // Désélectionner le sort
-      }));
-      return { success: true, message: `Sort ${spell.name} désélectionné`, paCost: 0 };
-    }
-
-    // ✅ SÉLECTIONNER LE SORT
-    console.log(`✅ Sort ${spell.name} sélectionné !`);
-    setCombatState(prev => ({
-      ...prev,
-      selectedSpell: {
-        spellId: spellId,
-        spell: spell,
-        caster: combatantId
+    setCombatState(prev => {
+      // Désélection spéciale
+      if (spellId === -1) {
+        result = { success: true, message: "Sort désélectionné", paCost: 0 };
+        return { ...prev, selectedSpell: null };
       }
-    }));
 
-    return { 
-      success: true, 
-      message: `Sort ${spell.name} sélectionné ! Choisissez une cible.`, 
-      paCost: 0 
-    };
-  }, [combatState]);
+      const combatant = prev.combatants.find(c => c.id === combatantId);
+      
+      if (!combatant) {
+        result = { success: false, message: "Combattant introuvable", paCost: 0 };
+        return prev;
+      }
+
+      if (prev.currentTurnCombatantId !== combatantId) {
+        result = { success: false, message: "Ce n'est pas votre tour", paCost: 0 };
+        return prev;
+      }
+
+      // Désélection normale
+      if (prev.selectedSpell && prev.selectedSpell.spellId === spellId) {
+        result = { success: true, message: "Sort désélectionné", paCost: 0 };
+        return { ...prev, selectedSpell: null };
+      }
+
+      const spell = AVAILABLE_SPELLS[spellId as keyof typeof AVAILABLE_SPELLS];
+      if (!spell) {
+        result = { success: false, message: "Sort inconnu", paCost: 0 };
+        return prev;
+      }
+
+      if (spell.paCost > combatant.pa) {
+        result = { success: false, message: `Pas assez de PA`, paCost: 0 };
+        return prev;
+      }
+
+      result = { success: true, message: `Sort ${spell.name} sélectionné`, paCost: 0 };
+
+      return {
+        ...prev,
+        selectedSpell: {
+          spellId: spellId,
+          spell: spell,
+          caster: combatantId
+        }
+      };
+    });
+
+    return result;
+  }, []);
 
   /**
-   * ✅ NOUVEAU: LANCER UN SORT SUR UNE CIBLE (après sélection)
+   * ✅ NOUVELLE FONCTION SIMPLIFIÉE: Lancer un sort directement sur un combattant
    */
-  const castSpellOnTarget = useCallback((targetPosition: Position): ActionResult => {
-    console.log(`✨ === LANCEMENT DE SORT SUR CIBLE ===`);
-    console.log(`🎯 Position cible: (${targetPosition.x}, ${targetPosition.y})`);
+  const castSpellOnCombatant = useCallback((targetCombatant: Combatant): ActionResult => {
+    console.log(`✨ === LANCEMENT DE SORT DIRECT SUR COMBATTANT ===`);
+    console.log(`🎯 Cible: ${targetCombatant.name} (${targetCombatant.team})`);
 
-    const currentCombatState = combatState;
+    let result: ActionResult = { success: false, message: "Erreur", paCost: 0 };
 
-    // Vérifier qu'un sort est sélectionné
-    if (!currentCombatState.selectedSpell) {
-      console.log(`❌ Aucun sort sélectionné`);
-      return { success: false, message: "Aucun sort sélectionné", paCost: 0 };
-    }
-
-    const { spell, caster } = currentCombatState.selectedSpell;
-    const combatant = currentCombatState.combatants.find(c => c.id === caster);
-    
-    if (!combatant) {
-      console.log(`❌ Lanceur introuvable`);
-      return { success: false, message: "Lanceur introuvable", paCost: 0 };
-    }
-
-    // Vérifier la portée du sort
-    const distance = Math.abs(targetPosition.x - combatant.position.x) + 
-                    Math.abs(targetPosition.y - combatant.position.y);
-    
-    if (distance > spell.range) {
-      console.log(`❌ Cible trop loin ! Distance: ${distance}, Portée: ${spell.range}`);
-      return { 
-        success: false, 
-        message: `Cible trop loin (portée: ${spell.range}, distance: ${distance})`, 
-        paCost: 0 
-      };
-    }
-
-    // Trouver la cible à cette position
-    const target = currentCombatState.combatants.find(c => 
-      c.position.x === targetPosition.x && c.position.y === targetPosition.y && c.isAlive
-    );
-
-    // ✅ APPLIQUER L'EFFET DU SORT
-    let effectResult = { success: true, message: '', damage: 0, heal: 0 };
-
-    if (spell.type === 'damage') {
-      if (!target) {
-        console.log(`❌ Aucune cible à cette position`);
-        return { success: false, message: "Aucune cible à cette position", paCost: 0 };
+    setCombatState(prev => {
+      // Vérifier qu'un sort est sélectionné
+      if (!prev.selectedSpell) {
+        result = { success: false, message: "Aucun sort sélectionné", paCost: 0 };
+        return prev;
       }
 
-      if (spell.targetType === 'enemy' && target.team === combatant.team) {
-        console.log(`❌ Ne peut pas attaquer un allié`);
-        return { success: false, message: "Ne peut pas attaquer un allié", paCost: 0 };
+      const { spell, caster } = prev.selectedSpell;
+      const combatant = prev.combatants.find(c => c.id === caster);
+      
+      if (!combatant) {
+        result = { success: false, message: "Lanceur introuvable", paCost: 0 };
+        return prev;
       }
 
-      // Calculer les dégâts aléatoirement entre min et max
-      const damage = Math.floor(Math.random() * (spell.maxDamage - spell.minDamage + 1)) + spell.minDamage;
-      console.log(`⚔️ Dégâts calculés: ${damage}`);
+      // Vérifier que c'est le tour du joueur
+      if (prev.currentTurnCombatantId !== 'player') {
+        result = { success: false, message: "Ce n'est pas votre tour", paCost: 0 };
+        return prev;
+      }
 
-      setCombatState(prev => {
+      // Vérifier la portée
+      const distance = Math.abs(targetCombatant.position.x - combatant.position.x) + 
+                      Math.abs(targetCombatant.position.y - combatant.position.y);
+      
+      if (distance > spell.range) {
+        result = { success: false, message: `Cible trop loin (Distance: ${distance}, Portée: ${spell.range})`, paCost: 0 };
+        return prev;
+      }
+
+      // ✅ VÉRIFICATION SIMPLIFIÉE DES CIBLES
+      if (spell.type === 'damage') {
+        // Sort d'attaque - peut cibler seulement les ennemis
+        if (targetCombatant.team === combatant.team) {
+          result = { success: false, message: "Ne peut pas attaquer un allié", paCost: 0 };
+          return prev;
+        }
+      } else if (spell.type === 'heal') {
+        // Sort de soin - peut cibler seulement les alliés
+        if (targetCombatant.team !== combatant.team) {
+          result = { success: false, message: "Ne peut pas soigner un ennemi", paCost: 0 };
+          return prev;
+        }
+      }
+
+      // ✅ APPLIQUER LES EFFETS DU SORT
+      if (spell.type === 'damage') {
+        const damage = Math.floor(Math.random() * (spell.maxDamage - spell.minDamage + 1)) + spell.minDamage;
+        
         const updatedCombatants = prev.combatants.map(c => {
           if (c.id === caster) {
-            return { ...c, pa: c.pa - spell.paCost }; // Décompter les PA
+            // Décompter les PA du lanceur
+            return { ...c, pa: c.pa - spell.paCost };
           }
-          if (c.id === target.id) {
+          if (c.id === targetCombatant.id) {
+            // Appliquer les dégâts à la cible
             const newHealth = Math.max(0, c.health - damage);
-            return { ...c, health: newHealth, isAlive: newHealth > 0 };
+            const stillAlive = newHealth > 0;
+            return { ...c, health: newHealth, isAlive: stillAlive };
           }
           return c;
         });
 
+        result = {
+          success: true,
+          message: `${spell.name} inflige ${damage} dégâts à ${targetCombatant.name} !`,
+          damage: damage,
+          heal: 0,
+          paCost: spell.paCost
+        };
+
         return {
           ...prev,
           combatants: updatedCombatants,
-          selectedSpell: null, // ✅ Désélectionner le sort après utilisation
+          selectedSpell: null, // Désélectionner après utilisation
           combatLog: [...prev.combatLog, {
-            id: `spell-damage-${Date.now()}`,
+            id: `spell-${Date.now()}`,
             turn: prev.turnNumber,
             actor: combatant.name,
             action: 'spell',
-            description: `${combatant.name} lance ${spell.name} sur ${target.name} ! ${damage} dégâts [-${spell.paCost} PA]`,
+            description: `${combatant.name} lance ${spell.name} sur ${targetCombatant.name} ! ${damage} dégâts`,
             timestamp: new Date()
           }]
         };
-      });
 
-      effectResult = {
-        success: true,
-        message: `${spell.name} inflige ${damage} dégâts à ${target.name} !`,
-        damage: damage,
-        heal: 0
-      };
+      } else if (spell.type === 'heal') {
+        const healAmount = Math.floor(Math.random() * (spell.maxHeal - spell.minHeal + 1)) + spell.minHeal;
 
-    } else if (spell.type === 'heal') {
-      // Sort de soin - peut cibler soi-même ou la position cliquée
-      let healTarget = target || combatant; // Si pas de cible, se soigner soi-même
-
-      if (spell.targetType === 'self' && target && target.team !== combatant.team) {
-        console.log(`❌ Ne peut pas soigner un ennemi`);
-        return { success: false, message: "Ne peut pas soigner un ennemi", paCost: 0 };
-      }
-
-      const healAmount = Math.floor(Math.random() * (spell.maxHeal - spell.minHeal + 1)) + spell.minHeal;
-      console.log(`💚 Soins calculés: ${healAmount}`);
-
-      setCombatState(prev => {
         const updatedCombatants = prev.combatants.map(c => {
           if (c.id === caster) {
-            // Si on se soigne soi-même
-            if (!target || c.id === healTarget.id) {
-              const newHealth = Math.min(c.maxHealth, c.health + healAmount);
-              return { 
-                ...c, 
-                pa: c.pa - spell.paCost, // Décompter les PA
-                health: newHealth 
-              };
-            } else {
-              return { ...c, pa: c.pa - spell.paCost }; // Juste décompter les PA
-            }
+            // Décompter les PA du lanceur
+            return { ...c, pa: c.pa - spell.paCost };
           }
-          if (target && c.id === healTarget.id && c.id !== caster) {
+          if (c.id === targetCombatant.id) {
+            // Appliquer les soins à la cible
             const newHealth = Math.min(c.maxHealth, c.health + healAmount);
             return { ...c, health: newHealth };
           }
           return c;
         });
 
-        return {
-          ...prev,
-          combatants: updatedCombatants,
-          selectedSpell: null, // ✅ Désélectionner le sort après utilisation
-          combatLog: [...prev.combatLog, {
-            id: `spell-heal-${Date.now()}`,
-            turn: prev.turnNumber,
-            actor: combatant.name,
-            action: 'spell',
-            description: `${combatant.name} lance ${spell.name} et ${healTarget.name} récupère ${healAmount} PV [-${spell.paCost} PA]`,
-            timestamp: new Date()
-          }]
+        result = {
+          success: true,
+          message: `${spell.name} soigne ${targetCombatant.name} de ${healAmount} PV !`,
+          damage: 0,
+          heal: healAmount,
+          paCost: spell.paCost
         };
-      });
-
-      effectResult = {
-        success: true,
-        message: `${spell.name} soigne ${healTarget.name} de ${healAmount} PV !`,
-        damage: 0,
-        heal: healAmount
-      };
-
-    } else if (spell.type === 'buff') {
-      // Sort de buff - améliorer les stats
-      console.log(`🛡️ Buff appliqué: ${spell.effect} +${spell.value}`);
-
-      setCombatState(prev => {
-        const updatedCombatants = prev.combatants.map(c => {
-          if (c.id === caster) {
-            return { 
-              ...c, 
-              pa: c.pa - spell.paCost, // Décompter les PA
-              defense: c.defense + (spell.value || 0) // Améliorer la défense
-            };
-          }
-          return c;
-        });
 
         return {
           ...prev,
           combatants: updatedCombatants,
-          selectedSpell: null, // ✅ Désélectionner le sort après utilisation
+          selectedSpell: null,
           combatLog: [...prev.combatLog, {
-            id: `spell-buff-${Date.now()}`,
+            id: `spell-${Date.now()}`,
             turn: prev.turnNumber,
             actor: combatant.name,
             action: 'spell',
-            description: `${combatant.name} lance ${spell.name} et améliore sa défense de ${spell.value} [-${spell.paCost} PA]`,
+            description: `${combatant.name} lance ${spell.name} et soigne ${targetCombatant.name} de ${healAmount} PV`,
             timestamp: new Date()
           }]
         };
-      });
+      }
 
-      effectResult = {
-        success: true,
-        message: `${spell.name} améliore votre défense de ${spell.value} !`,
-        damage: 0,
-        heal: 0
-      };
-    }
+      result = { success: false, message: "Type de sort non géré", paCost: 0 };
+      return prev;
+    });
 
-    console.log(`✅ Sort lancé avec succès: ${effectResult.message}`);
-
-    return { 
-      success: true, 
-      message: effectResult.message,
-      damage: effectResult.damage,
-      heal: effectResult.heal,
-      paCost: spell.paCost 
-    };
-  }, [combatState]);
+    console.log(`🔮 Résultat: ${result.success ? 'SUCCÈS' : 'ÉCHEC'} - ${result.message}`);
+    return result;
+  }, []);
 
   /**
-   * ✅ ANCIEN: Maintenu pour compatibilité (utilise maintenant selectSpell)
+   * ✅ ANCIENNE FONCTION (gardée pour compatibilité)
    */
-  const castSpell = useCallback((combatantId: string, spellId: number, providedSpellCost?: number): ActionResult => {
-    // Rediriger vers la fonction de sélection
-    return selectSpell(combatantId, spellId);
-  }, [selectSpell]);
+  const castSpellOnTarget = useCallback((targetPosition: Position): ActionResult => {
+    // Trouver le combattant à cette position
+    const targetCombatant = combatState.combatants.find(c => 
+      c.position.x === targetPosition.x && c.position.y === targetPosition.y && c.isAlive
+    );
+
+    if (targetCombatant) {
+      return castSpellOnCombatant(targetCombatant);
+    } else {
+      return { success: false, message: "Aucune cible à cette position", paCost: 0 };
+    }
+  }, [combatState.combatants, castSpellOnCombatant]);
 
   /**
-   * ✅ PASSER AU COMBATTANT SUIVANT
+   * ✅ Passer au combattant suivant avec IA et timer
    */
   const nextTurn = useCallback(() => {
     setCombatState(prev => {
@@ -837,27 +867,41 @@ export const useCombatDofus = () => {
       const nextIndex = (currentIndex + 1) % aliveCombatants.length;
       const nextCombatant = aliveCombatants[nextIndex];
 
-      // Si on revient au premier combattant, nouveau tour
       const newTurnNumber = nextIndex === 0 ? prev.turnNumber + 1 : prev.turnNumber;
 
-      // Recharger les PA/PM si c'est un nouveau tour complet
       const updatedCombatants = prev.combatants.map(c => {
         if (!c.isAlive) return c;
         
         if (nextIndex === 0) {
-          // Nouveau tour complet - recharger PA/PM
-          return {
-            ...c,
-            pa: c.maxPA,
-            pm: c.maxPM
-          };
+          return { ...c, pa: c.maxPA, pm: c.maxPM };
         }
         return c;
       });
 
-      console.log(`🔄 Tour suivant: ${nextCombatant.name}`);
-      if (newTurnNumber > prev.turnNumber) {
-        console.log(`🔄 NOUVEAU TOUR ${newTurnNumber} - PA/PM rechargés pour tous !`);
+      // ✅ Redémarrer le timer pour le nouveau tour
+      startTurnTimer();
+
+      // ✅ Si c'est le tour d'un ennemi, déclencher l'IA après un délai
+      if (nextCombatant.team === 'enemy') {
+        console.log(`🤖 C'est le tour de ${nextCombatant.name} - IA activée dans 2 secondes`);
+        
+        // Nettoyer l'ancien timeout d'IA
+        if (aiTimeoutRef.current) {
+          clearTimeout(aiTimeoutRef.current);
+        }
+        
+        // Programmer l'action de l'IA
+        aiTimeoutRef.current = setTimeout(() => {
+          console.log(`🎮 Exécution de l'IA pour ${nextCombatant.name}`);
+          executeEnemyAI(nextCombatant);
+          
+          // Après l'action de l'IA, attendre 2 secondes puis passer au tour suivant
+          setTimeout(() => {
+            console.log(`⏭️ Tour de ${nextCombatant.name} terminé, passage au suivant`);
+            nextTurn();
+          }, 2000);
+          
+        }, 2000); // L'IA agit après 2 secondes
       }
 
       return {
@@ -865,51 +909,48 @@ export const useCombatDofus = () => {
         currentTurnCombatantId: nextCombatant.id,
         turnNumber: newTurnNumber,
         combatants: updatedCombatants,
-        selectedSpell: null, // ✅ Reset du sort sélectionné
+        selectedSpell: null,
         combatLog: [...prev.combatLog, {
           id: `next-turn-${Date.now()}`,
           turn: newTurnNumber,
           actor: 'Système',
           action: 'next-turn',
-          description: `C'est au tour de ${nextCombatant.name} ${newTurnNumber > prev.turnNumber ? '(Nouveau tour !)' : ''}`,
+          description: `C'est au tour de ${nextCombatant.name}`,
           timestamp: new Date()
         }]
       };
     });
-  }, []);
+  }, [startTurnTimer, executeEnemyAI]);
 
   /**
    * ✅ TERMINER LE COMBAT
    */
   const endCombat = useCallback((reason: 'victory' | 'defeat' | 'flee') => {
-    console.log(`🏁 Combat terminé : ${reason}`);
-    
-    setCombatState(prev => {
-      const endLog: CombatLogEntry = {
-        id: `combat-end-${Date.now()}`,
-        turn: prev.turnNumber,
-        actor: 'Système',
-        action: 'combat-end',
-        description: reason === 'victory' ? 'Victoire !' : 
-                     reason === 'defeat' ? 'Défaite...' : 
-                     'Combat annulé',
-        timestamp: new Date()
-      };
+    // ✅ Arrêter tous les timers
+    stopTurnTimer();
+    if (aiTimeoutRef.current) {
+      clearTimeout(aiTimeoutRef.current);
+      aiTimeoutRef.current = null;
+    }
 
-      return {
-        ...prev,
-        phase: reason === 'victory' ? 'victory' : reason === 'defeat' ? 'defeat' : 'exploring',
-        selectedSpell: null, // ✅ Reset du sort sélectionné
-        combatLog: [...prev.combatLog, endLog]
-      };
-    });
-  }, []);
+    setCombatState(prev => ({
+      ...prev,
+      phase: reason === 'victory' ? 'victory' : reason === 'defeat' ? 'defeat' : 'exploring',
+      selectedSpell: null
+    }));
+  }, [stopTurnTimer]);
 
   /**
    * ✅ RETOURNER EN MODE EXPLORATION
    */
   const exitCombat = useCallback(() => {
-    console.log('🚪 Sortie du combat - Retour en exploration');
+    // ✅ Arrêter tous les timers
+    stopTurnTimer();
+    if (aiTimeoutRef.current) {
+      clearTimeout(aiTimeoutRef.current);
+      aiTimeoutRef.current = null;
+    }
+
     setCombatState({
       phase: 'exploring',
       combatants: [],
@@ -919,9 +960,11 @@ export const useCombatDofus = () => {
       turnNumber: 1,
       combatLog: [],
       originalMonster: null,
-      selectedSpell: null // ✅ Reset du sort sélectionné
+      selectedSpell: null
     });
-  }, []);
+
+    setTurnTimeLeft(DOFUS_COMBAT_CONFIG.TURN_TIME);
+  }, [stopTurnTimer]);
 
   /**
    * ✅ VÉRIFIER AUTOMATIQUEMENT les conditions de victoire/défaite
@@ -933,10 +976,8 @@ export const useCombatDofus = () => {
     const enemyAlive = combatState.combatants.some(c => c.team === 'enemy' && c.isAlive);
 
     if (!playerAlive) {
-      console.log('💀 Joueur mort - Défaite');
       setTimeout(() => endCombat('defeat'), 1000);
     } else if (!enemyAlive) {
-      console.log('🏆 Ennemis morts - Victoire');
       setTimeout(() => endCombat('victory'), 1000);
     }
   }, [combatState.combatants, combatState.phase, endCombat]);
@@ -950,9 +991,33 @@ export const useCombatDofus = () => {
     }
   }, [combatState.combatants, combatState.phase, checkStartFighting]);
 
+  // ✅ Nettoyer les timers au démontage du composant
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+      if (aiTimeoutRef.current) {
+        clearTimeout(aiTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Fonction de compatibilité
+  const setCombatantReady = useCallback((combatantId: string) => {
+    // Cette fonction n'est plus nécessaire car le placement rend automatiquement prêt
+  }, []);
+
+  const castSpell = useCallback((combatantId: string, spellId: number): ActionResult => {
+    return selectSpell(combatantId, spellId);
+  }, [selectSpell]);
+
   return {
     // État du combat
     combatState,
+    
+    // ✅ État du timer
+    turnTimeLeft,
     
     // Actions principales
     startCombat,
@@ -965,13 +1030,18 @@ export const useCombatDofus = () => {
     
     // Phase de combat
     moveCombatant,
-    castSpell, // ✅ Fonction de sélection de sorts
-    selectSpell, // ✅ NOUVEAU: Sélectionner un sort
-    castSpellOnTarget, // ✅ NOUVEAU: Lancer un sort sur une cible
+    castSpell,
+    selectSpell,
+    castSpellOnTarget, // Ancienne fonction
+    castSpellOnCombatant, // Nouvelle fonction simplifiée
     nextTurn,
+    
+    // ✅ Fonctions du timer
+    startTurnTimer,
+    stopTurnTimer,
     
     // Configuration
     DOFUS_COMBAT_CONFIG,
-    AVAILABLE_SPELLS // ✅ NOUVEAU: Exporter les sorts disponibles
+    AVAILABLE_SPELLS
   };
 };

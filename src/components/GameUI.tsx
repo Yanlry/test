@@ -1,14 +1,72 @@
 /**
- * COMPOSANT GAME UI - VERSION AVEC SORTS FONCTIONNELS
- * ✅ CORRIGÉ: Les sorts coûtent maintenant des PA (Points d'Action)
- * ✅ NOUVEAU: Sorts avec effets réels (dégâts, soins, buffs)
- * ✅ NOUVEAU: Système de sorts adapté au combat Dofus
+ * GAME UI - VERSION CORRIGÉE AVEC LAYOUT DEMANDÉ
+ * ✅ Timeline SÉPARÉE au-dessus du GameUI (pas dedans)
+ * ✅ Boutons combat remplacent "Joueur" dans le module central
+ * ✅ Stats vie/PA/PM bien visibles comme avant
+ * ✅ Barre de sorts propre (sans timeline intégrée)
+ * ✅ Interface props corrigée (plus d'erreur TypeScript)
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Heart, ShoppingCart, Settings, Users, MessageCircle, Package, Swords, Footprints, Globe, Shield, Mail, User } from 'lucide-react';
+import { Send, Heart, ShoppingCart, Settings, Users, MessageCircle, Package, Swords, Footprints, Globe, Shield, Mail, User, SkipForward, X } from 'lucide-react';
 
-// ✅ NOUVEAU: Liste de sorts avec coûts en PA et effets réels
+// ===== TYPES ET INTERFACES =====
+
+interface EquipmentBonuses {
+  paBonus: number;
+  pmBonus: number;
+  hpBonus: number;
+  mpBonus: number;
+}
+
+// ✅ Interface corrigée sans les props qui causaient l'erreur
+interface GameUIProps {
+  // Stats de base (obligatoires)
+  currentHP: number;
+  maxHP: number;
+  currentMP: number;
+  maxMP: number;
+  
+  // ✅ COMPATIBILITÉ: PA/PM directement utilisables
+  currentPA?: number;
+  maxPA?: number;
+  currentPM?: number;
+  maxPM?: number;
+  
+  // ✅ NOUVEAU: Système moderne avec séparation base/équipement
+  basePACurrentTurn?: number;
+  basePAMaxPerTurn?: number;
+  basePMCurrentTurn?: number;
+  basePMMaxPerTurn?: number;
+  equipmentBonuses?: EquipmentBonuses;
+  
+  // Autres props
+  spells?: Array<{
+    id: number;
+    name: string;
+    icon: string;
+    manaCost: number;
+    cooldown: number;
+  }>;
+  onSpellClick?: (spellId: number) => void;
+  onInventoryClick?: () => void;
+  onCharacterClick?: () => void;
+  selectedSpellId?: number | null;
+  isInCombat?: boolean;
+  onEndTurn?: () => void;
+  onAbandonCombat?: () => void;
+}
+
+interface ChatMessage {
+  id: number;
+  username: string;
+  message: string;
+  timestamp: Date;
+  type: 'general' | 'guild' | 'whisper' | 'system' | 'commerce';
+}
+
+// ===== DONNÉES DES SORTS =====
+
 const TOUS_LES_SORTS = [
   { 
     id: 1, 
@@ -17,6 +75,7 @@ const TOUS_LES_SORTS = [
     paCost: 3, 
     description: 'Attaque rapide (15-25 dégâts)', 
     type: 'damage',
+    targetType: 'enemy',
     minDamage: 15,
     maxDamage: 25,
     range: 1
@@ -28,6 +87,7 @@ const TOUS_LES_SORTS = [
     paCost: 4, 
     description: 'Attaque forte (25-35 dégâts)', 
     type: 'damage',
+    targetType: 'enemy',
     minDamage: 25,
     maxDamage: 35,
     range: 1
@@ -39,6 +99,7 @@ const TOUS_LES_SORTS = [
     paCost: 2, 
     description: 'Empoisonne (10-15 dégâts)', 
     type: 'damage',
+    targetType: 'enemy',
     minDamage: 10,
     maxDamage: 15,
     range: 2
@@ -50,6 +111,7 @@ const TOUS_LES_SORTS = [
     paCost: 3, 
     description: 'Soigne 20-30 PV', 
     type: 'heal',
+    targetType: 'self',
     minHeal: 20,
     maxHeal: 30,
     range: 3
@@ -61,6 +123,7 @@ const TOUS_LES_SORTS = [
     paCost: 4, 
     description: 'Boule de feu (30-40 dégâts)', 
     type: 'damage',
+    targetType: 'enemy',
     minDamage: 30,
     maxDamage: 40,
     range: 4
@@ -72,6 +135,7 @@ const TOUS_LES_SORTS = [
     paCost: 5, 
     description: 'Soigne 40-50 PV', 
     type: 'heal',
+    targetType: 'self',
     minHeal: 40,
     maxHeal: 50,
     range: 2
@@ -83,6 +147,7 @@ const TOUS_LES_SORTS = [
     paCost: 5, 
     description: 'Attaque électrique (35-45 dégâts)', 
     type: 'damage',
+    targetType: 'enemy',
     minDamage: 35,
     maxDamage: 45,
     range: 5
@@ -94,6 +159,7 @@ const TOUS_LES_SORTS = [
     paCost: 3, 
     description: 'Gèle l\'ennemi (20-25 dégâts)', 
     type: 'damage',
+    targetType: 'enemy',
     minDamage: 20,
     maxDamage: 25,
     range: 3
@@ -105,6 +171,7 @@ const TOUS_LES_SORTS = [
     paCost: 4, 
     description: 'Régénère 30-40 PV', 
     type: 'heal',
+    targetType: 'self',
     minHeal: 30,
     maxHeal: 40,
     range: 1
@@ -116,6 +183,7 @@ const TOUS_LES_SORTS = [
     paCost: 6, 
     description: 'Explosion (50-60 dégâts)', 
     type: 'damage',
+    targetType: 'enemy',
     minDamage: 50,
     maxDamage: 60,
     range: 2
@@ -127,6 +195,7 @@ const TOUS_LES_SORTS = [
     paCost: 6, 
     description: 'Météore dévastateur (60-80 dégâts)', 
     type: 'damage',
+    targetType: 'enemy',
     minDamage: 60,
     maxDamage: 80,
     range: 6
@@ -138,6 +207,7 @@ const TOUS_LES_SORTS = [
     paCost: 2, 
     description: 'Augmente la défense', 
     type: 'buff',
+    targetType: 'self',
     effect: 'defense',
     value: 10,
     range: 1
@@ -149,6 +219,7 @@ const TOUS_LES_SORTS = [
     paCost: 3, 
     description: 'Soigne 35-45 PV', 
     type: 'heal',
+    targetType: 'self',
     minHeal: 35,
     maxHeal: 45,
     range: 4
@@ -160,6 +231,7 @@ const TOUS_LES_SORTS = [
     paCost: 5, 
     description: 'Attaque en zone (40-50 dégâts)', 
     type: 'damage',
+    targetType: 'enemy',
     minDamage: 40,
     maxDamage: 50,
     range: 3
@@ -171,6 +243,7 @@ const TOUS_LES_SORTS = [
     paCost: 6, 
     description: 'Restaure tous les PV', 
     type: 'heal',
+    targetType: 'self',
     minHeal: 999,
     maxHeal: 999,
     range: 1
@@ -182,139 +255,90 @@ const TOUS_LES_SORTS = [
     paCost: 6, 
     description: 'Sort ultime (80-100 dégâts)', 
     type: 'damage',
+    targetType: 'enemy',
     minDamage: 80,
     maxDamage: 100,
     range: 8
   }
 ];
 
-interface GameUIProps {
-  currentHP: number;
-  maxHP: number;
-  currentMP: number;
-  maxMP: number;
-  currentPA?: number;
-  maxPA?: number;
-  currentPM?: number;
-  maxPM?: number;
-  spells?: Array<{
-    id: number;
-    name: string;
-    icon: string;
-    manaCost: number;
-    cooldown: number;
-  }>;
-  onSpellClick?: (spellId: number) => void;
-  onInventoryClick?: () => void;
-  onCharacterClick?: () => void;
-}
-
-interface ChatMessage {
-  id: number;
-  username: string;
-  message: string;
-  timestamp: Date;
-  type: 'general' | 'guild' | 'whisper' | 'system' | 'commerce';
-}
+// ===== COMPOSANT PRINCIPAL =====
 
 const GameUI: React.FC<GameUIProps> = ({
   currentHP,
   maxHP,
   currentMP,
   maxMP,
-  currentPA = 10,
-  maxPA = 10,
-  currentPM = 5,
-  maxPM = 5,
+  currentPA,
+  maxPA,
+  currentPM,
+  maxPM,
+  basePACurrentTurn = 6,
+  basePAMaxPerTurn = 6,
+  basePMCurrentTurn = 3,
+  basePMMaxPerTurn = 3,
+  equipmentBonuses = { paBonus: 4, pmBonus: 2, hpBonus: 0, mpBonus: 0 },
   spells = [],
   onSpellClick,
   onInventoryClick,
-  onCharacterClick
+  onCharacterClick,
+  selectedSpellId = null,
+  isInCombat = false,
+  onEndTurn,
+  onAbandonCombat
 }) => {
-  // États pour le chat
+  
+  // ===== LOGIQUE DE CALCUL =====
+  
+  const isLegacyMode = currentPA !== undefined && maxPA !== undefined;
+  const finalPACurrent = isLegacyMode ? currentPA : (basePACurrentTurn + equipmentBonuses.paBonus);
+  const finalPAMax = isLegacyMode ? maxPA : (basePAMaxPerTurn + equipmentBonuses.paBonus);
+  const finalPMCurrent = isLegacyMode ? (currentPM || 5) : (basePMCurrentTurn + equipmentBonuses.pmBonus);
+  const finalPMMax = isLegacyMode ? (maxPM || 5) : (basePMMaxPerTurn + equipmentBonuses.pmBonus);
+  
+  // ===== ÉTAT LOCAL =====
+  
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     {
       id: 1,
       username: 'System',
-      message: 'Bienvenue dans le jeu !',
+      message: 'Interface corrigée ! Timeline séparée.',
       timestamp: new Date(),
       type: 'system'
-    },
-    {
-      id: 2,
-      username: 'Joueur1',
-      message: 'Salut tout le monde !',
-      timestamp: new Date(),
-      type: 'general'
-    },
-    {
-      id: 3,
-      username: 'MageNoir',
-      message: 'Quelqu\'un pour un donjon ?',
-      timestamp: new Date(),
-      type: 'general'
-    },
-    {
-      id: 4,
-      username: 'Archer42',
-      message: 'J\'ai trouvé un équipement rare !',
-      timestamp: new Date(),
-      type: 'general'
-    },
-    {
-      id: 5,
-      username: 'Healer',
-      message: 'Besoin d\'aide pour une quête',
-      timestamp: new Date(),
-      type: 'general'
-    },
-    {
-      id: 6,
-      username: 'GuildMaster',
-      message: 'Réunion de guilde à 20h',
-      timestamp: new Date(),
-      type: 'guild'
     }
   ]);
   
   const [chatInput, setChatInput] = useState('');
   const [activeChannel, setActiveChannel] = useState<'general' | 'guild' | 'commerce' | 'whisper'>('general');
-  
-  // État pour la hauteur du chat (3 tailles possibles)
   const [chatHeight, setChatHeight] = useState<'normal' | 'medium' | 'large'>('normal');
-  
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll du chat vers le bas
+  // ===== EFFETS =====
+  
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
 
-  // Fonction pour changer la hauteur du chat
-  const toggleChatHeight = () => {
+  // ===== FONCTIONS UTILITAIRES =====
+  
+  const toggleChatHeight = (): void => {
     setChatHeight(current => {
-      if (current === 'normal') return 'medium';  // Normal → Moyen
-      if (current === 'medium') return 'large';   // Moyen → Grand
-      return 'normal';                            // Grand → Normal (cycle)
+      if (current === 'normal') return 'medium';
+      if (current === 'medium') return 'large';
+      return 'normal';
     });
   };
 
-  // Fonction qui retourne SEULEMENT la hauteur du chat interne
-  const getChatHeightClass = () => {
-    switch (chatHeight) {
-      case 'normal': 
-        return 'h-full'; // Hauteur normale (192px) - remplit tout le conteneur
-      case 'medium': 
-        return 'h-64'; // Hauteur moyenne (256px)
-      case 'large': 
-        return 'h-80'; // Grande hauteur (320px)
-      default: 
-        return 'h-full';
-    }
+  const getChatHeightClass = (): string => {
+    const heightMap = {
+      normal: 'h-full',
+      medium: 'h-64', 
+      large: 'h-80'
+    };
+    return heightMap[chatHeight];
   };
 
-  // Fonction pour envoyer un message
-  const sendMessage = () => {
+  const sendMessage = (): void => {
     if (chatInput.trim()) {
       const newMessage: ChatMessage = {
         id: Date.now(),
@@ -323,145 +347,117 @@ const GameUI: React.FC<GameUIProps> = ({
         timestamp: new Date(),
         type: activeChannel
       };
-      
       setChatMessages(prev => [...prev, newMessage]);
       setChatInput('');
     }
   };
 
-  // Fonction pour gérer l'appui sur Entrée
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyPress = (e: React.KeyboardEvent): void => {
     if (e.key === 'Enter') {
       sendMessage();
     }
   };
 
-  // Couleurs des canaux de chat
-  const getChannelColor = (type: ChatMessage['type']) => {
-    switch (type) {
-      case 'general': return 'text-white';
-      case 'guild': return 'text-green-400';
-      case 'whisper': return 'text-purple-400';
-      case 'system': return 'text-yellow-400';
-      default: return 'text-white';
-    }
+  const getChannelColor = (type: ChatMessage['type']): string => {
+    const colorMap = {
+      general: 'text-white',
+      guild: 'text-green-400',
+      whisper: 'text-purple-400',
+      system: 'text-yellow-400',
+      commerce: 'text-orange-400'
+    };
+    return colorMap[type] || 'text-white';
   };
 
-  // ✅ NOUVEAU: Fonction pour obtenir la couleur du sort selon son coût
-  const getSpellBorderColor = (paCost: number, currentPA: number) => {
-    if (paCost > currentPA) {
-      return 'border-red-500'; // Rouge si pas assez de PA
-    } else if (paCost >= 5) {
-      return 'border-purple-500'; // Violet pour sorts puissants
-    } else if (paCost >= 3) {
-      return 'border-orange-500'; // Orange pour sorts moyens
+  // ===== FONCTIONS POUR LES SORTS =====
+  
+  const getSpellBorderColor = (spell: any, currentPA: number, isSelected: boolean): string => {
+    if (isSelected) {
+      return 'border-yellow-400 bg-yellow-400/20 shadow-lg shadow-yellow-400/30';
+    }
+    if (spell.paCost > currentPA) {
+      return 'border-red-500 bg-red-500/10';
+    }
+    if (spell.paCost >= 5) {
+      return 'border-purple-500 bg-purple-500/10 hover:bg-purple-500/20';
+    } else if (spell.paCost >= 3) {
+      return 'border-orange-500 bg-orange-500/10 hover:bg-orange-500/20';
     } else {
-      return 'border-green-500'; // Vert pour sorts peu coûteux
+      return 'border-green-500 bg-green-500/10 hover:bg-green-500/20';
     }
   };
 
-  // ✅ NOUVEAU: Fonction pour obtenir l'icône du type de sort
-  const getSpellTypeIcon = (spell: any) => {
+  const getSpellTypeIcon = (spell: any): string => {
     if (spell.type === 'heal') return '💚';
     if (spell.type === 'buff') return '🛡️';
     return spell.icon;
   };
 
-  // Utilisation forcée des sorts avec PA
-  const displaySpells = TOUS_LES_SORTS;
+  const canCastSpell = (spell: any, currentPA: number): boolean => {
+    return currentPA >= spell.paCost;
+  };
 
+  const handleSpellClick = (spellId: number): void => {
+    console.log(`🔮 GameUI: Clic sur sort ${spellId} (PA: ${finalPACurrent})`);
+    onSpellClick?.(spellId);
+  };
+
+  // ===== RENDU =====
+  
   return (
     <div className="fixed bottom-0 left-0 right-0 z-[9999] pointer-events-none">
       
-      {/* FOND SEMI-TRANSPARENT POUR L'UI */}
+      {/* Fond semi-transparent */}
       <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
       
-      {/* Hauteur parfaite conservée à h-48 */}
+      {/* ✅ INTERFACE PRINCIPALE */}
       <div className="relative flex w-full p-3 gap-3 pointer-events-auto items-end h-48">
         
-        {/* ========== BOUTONS DE CATÉGORIES À GAUCHE ========== */}
+        {/* ===== BOUTONS DE CHAT ===== */}
         <div className="flex flex-col space-y-2">
-          {/* Bouton Général */}
-          <button
-            onClick={() => setActiveChannel('general')}
-            className={`p-2 rounded-lg border-2 backdrop-blur-sm transition-all duration-200 ${
-              activeChannel === 'general'
-                ? 'bg-white/20 border-white text-white'
-                : 'bg-gray-900/95 border-gray-600 text-gray-400 hover:text-white hover:border-white'
-            }`}
-            title="Chat Général"
-          >
-            <Globe size={16} />
-          </button>
-          
-          {/* Bouton Guilde */}
-          <button
-            onClick={() => setActiveChannel('guild')}
-            className={`p-2 rounded-lg border-2 backdrop-blur-sm transition-all duration-200 ${
-              activeChannel === 'guild'
-                ? 'bg-green-400/20 border-green-400 text-green-400'
-                : 'bg-gray-900/95 border-gray-600 text-gray-400 hover:text-green-400 hover:border-green-400'
-            }`}
-            title="Chat Guilde"
-          >
-            <Shield size={16} />
-          </button>
-             {/* Bouton Commerce & Recrutement */}
-             <button
-            onClick={() => setActiveChannel('commerce')}
-            className={`p-2 rounded-lg border-2 backdrop-blur-sm transition-all duration-200 ${
-              activeChannel === 'commerce'
-                ? 'bg-orange-400/20 border-orange-400 text-orange-400'
-                : 'bg-gray-900/95 border-gray-600 text-gray-400 hover:text-orange-400 hover:border-orange-400'
-            }`}
-            title="Commerce & Recrutement"
-          >
-            <ShoppingCart size={16} />
-          </button>
-
-          {/* Bouton Privé */}
-          <button
-            onClick={() => setActiveChannel('whisper')}
-            className={`p-2 rounded-lg border-2 backdrop-blur-sm transition-all duration-200 ${
-              activeChannel === 'whisper'
-                ? 'bg-purple-400/20 border-purple-400 text-purple-400'
-                : 'bg-gray-900/95 border-gray-600 text-gray-400 hover:text-purple-400 hover:border-purple-400'
-            }`}
-            title="Messages Privés"
-          >
-            <Mail size={16} />
-          </button>
+          {(['general', 'guild', 'commerce', 'whisper'] as const).map((channel) => {
+            const iconMap = { general: Globe, guild: Shield, commerce: ShoppingCart, whisper: Mail };
+            const Icon = iconMap[channel];
+            const activeStyle = activeChannel === channel 
+              ? 'bg-blue-400/20 border-blue-400 text-blue-400'
+              : 'bg-gray-900/95 border-gray-600 text-gray-400 hover:text-white hover:border-white';
+            
+            return (
+              <button
+                key={channel}
+                onClick={() => setActiveChannel(channel)}
+                className={`p-2 rounded-lg border-2 backdrop-blur-sm transition-all duration-200 ${activeStyle}`}
+                title={`Chat ${channel}`}
+              >
+                <Icon size={16} />
+              </button>
+            );
+          })}
         </div>
         
-        {/* CHAT ANCRÉ EN BAS COMME LES AUTRES MODULES */}
+        {/* ===== CHAT ===== */}
         <div className="w-[35%] h-full">
-          {/* Conteneur qui garde le chat ancré en bas */}
           <div className="h-full flex flex-col justify-end">
-            {/* Le vrai chat avec hauteur variable qui grandit vers le haut */}
             <div className={`bg-gray-900/95 border-2 border-gray-600 rounded-lg backdrop-blur-sm shadow-lg ${getChatHeightClass()} flex flex-col transition-all duration-300`}>
               
-              {/* En-tête du chat avec flèche */}
+              {/* En-tête du chat */}
               <div className="flex items-center justify-between p-2 border-b border-gray-600 min-h-[32px]">
                 <div className="flex items-center space-x-2">
                   <MessageCircle size={14} className="text-blue-400" />
-                  <span className="text-white text-sm font-medium">
-                    Chat {activeChannel === 'general' ? 'Général' : activeChannel === 'guild' ? 'Guilde' : 'Privé'}
-                  </span>
+                  <span className="text-white text-sm font-medium">Chat {activeChannel}</span>
                   <Users size={12} className="text-gray-400" />
                   <span className="text-gray-400 text-xs">12</span>
                 </div>
-                
-                {/* Flèche qui change selon la hauteur */}
                 <button
                   onClick={toggleChatHeight}
                   className="text-gray-400 hover:text-white transition-colors text-sm"
-                  title={`Agrandir le chat (${chatHeight === 'normal' ? 'normal' : chatHeight === 'medium' ? 'moyen' : 'grand'})`}
+                  title={`Taille: ${chatHeight}`}
                 >
                   {chatHeight === 'normal' ? '▲' : chatHeight === 'medium' ? '▲▲' : '▼'}
                 </button>
               </div>
               
-              {/* Zone des messages */}
+              {/* Messages */}
               <div className="flex-1 overflow-y-auto p-2 space-y-1">
                 {chatMessages
                   .filter(msg => msg.type === activeChannel || msg.type === 'system')
@@ -503,51 +499,79 @@ const GameUI: React.FC<GameUIProps> = ({
           </div>
         </div>
         
-        {/* MODULE CENTRAL - RESTE EXACTEMENT PAREIL */}
+        {/* ===== MODULE CENTRAL - STATS JOUEUR AVEC BOUTONS COMBAT ===== */}
         <div className="w-[20%] h-full">
           <div className="bg-gray-900/95 border-2 border-gray-600 rounded-lg backdrop-blur-sm shadow-lg h-full flex flex-col">
             
+            {/* ✅ BOUTONS COMBAT À LA PLACE DE "JOUEUR" */}
             <div className="flex items-center justify-center p-2 border-b border-gray-600 min-h-[32px]">
-              <span className="text-white text-sm font-medium">Joueur</span>
+              {isInCombat ? (
+                <div className="flex space-x-1">
+                  <button
+                    onClick={onAbandonCombat}
+                    className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs font-medium transition-colors flex items-center space-x-1"
+                    title="Abandonner le combat"
+                  >
+                    <X size={10} />
+                    <span>Fuir</span>
+                  </button>
+                  
+                  <button
+                    onClick={onEndTurn}
+                    className="px-2 py-1 bg-orange-600 hover:bg-orange-700 text-white rounded text-xs font-bold transition-colors flex items-center space-x-1"
+                    title="Terminer votre tour"
+                  >
+                    <SkipForward size={10} />
+                    <span>Fin</span>
+                  </button>
+                </div>
+              ) : (
+                <span className="text-white text-sm font-medium">Joueur</span>
+              )}
             </div>
             
             <div className="flex-1 flex flex-col justify-center space-y-4 p-3">
               
-              {/* BOUTONS PERSONNAGE ET INVENTAIRE SUR LA MÊME LIGNE */}
-              <div className="bg-gray-800/50 border border-gray-700 rounded-lg ">
+              {/* Boutons Personnage et Inventaire */}
+              <div className="bg-gray-800/50 border border-gray-700 rounded-lg">
                 <div className="flex space-x-1">
-                  {/* Bouton Personnage - Plus compact */}
                   <button
                     onClick={onCharacterClick}
                     className="flex-1 flex items-center justify-center space-x-1 text-white hover:text-blue-400 hover:bg-blue-400/10 transition-all duration-200 rounded p-1"
-                    title="Ouvrir le panneau personnage"
+                    title="Panneau personnage"
                   >
                     <User size={14} />
-                    <span className="text-xs font-medium">Statistiques</span>
+                    <span className="text-xs font-medium">Stats</span>
                   </button>
                   
-                  {/* Bouton Inventaire - Plus compact */}
                   <button
                     onClick={onInventoryClick}
                     className="flex-1 flex items-center justify-center space-x-1 text-white hover:text-orange-400 hover:bg-orange-400/10 transition-all duration-200 rounded p-1"
-                    title="Ouvrir l'inventaire"
+                    title="Inventaire"
                   >
                     <Package size={14} />
-                    <span className="text-xs font-medium">Inventaire</span>
+                    <span className="text-xs font-medium">Sac</span>
                   </button>
                 </div>
               </div>
               
-              {/* MODULE VIE COMPACT - Centré dans l'espace disponible */}
+              {/* ✅ Module vie et stats - COMME AVANT */}
               <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-3">
                 <div className="flex justify-between items-center">
-                  {/* Points d'Action (PA) - Compact */}
+                  
+                  {/* PA */}
                   <div className="flex flex-col items-center">
                     <Swords className="text-orange-500" size={14} />
-                    <span className="text-white text-xs font-bold">{currentPA} PA</span>
+                    <div className="text-center">
+                      <span className="text-white text-xs font-bold">{finalPACurrent}</span>
+                      {!isLegacyMode && equipmentBonuses.paBonus > 0 && (
+                        <span className="text-green-400 text-xs">+{equipmentBonuses.paBonus}</span>
+                      )}
+                    </div>
+                    <span className="text-gray-400 text-xs">PA</span>
                   </div>
                   
-                  {/* VIE DANS LE CŒUR AU CENTRE */}
+                  {/* Cœur avec PV */}
                   <div className="relative mx-1">
                     <Heart className="text-red-500 fill-red-500" size={46} />
                     <span className="absolute inset-0 flex items-center justify-center text-white text-base font-bold">
@@ -555,10 +579,16 @@ const GameUI: React.FC<GameUIProps> = ({
                     </span>
                   </div>
                   
-                  {/* Points de Mouvement (PM) - Compact */}
+                  {/* PM */}
                   <div className="flex flex-col items-center">
                     <Footprints className="text-green-500" size={14} />
-                    <span className="text-white text-xs font-bold">{currentPM} PM</span>
+                    <div className="text-center">
+                      <span className="text-white text-xs font-bold">{finalPMCurrent}</span>
+                      {!isLegacyMode && equipmentBonuses.pmBonus > 0 && (
+                        <span className="text-green-400 text-xs">+{equipmentBonuses.pmBonus}</span>
+                      )}
+                    </div>
+                    <span className="text-gray-400 text-xs">PM</span>
                   </div>
                 </div>
               </div>
@@ -566,106 +596,153 @@ const GameUI: React.FC<GameUIProps> = ({
           </div>
         </div>
         
-        {/* ✅ BARRE DE SORTS MODIFIÉE POUR UTILISER DES PA */}
+        {/* ===== BARRE DE SORTS (SANS TIMELINE) ===== */}
         <div className="w-[45%] h-full">
           <div className="bg-gray-900/95 border-2 border-gray-600 rounded-lg backdrop-blur-sm shadow-lg w-full h-full flex flex-col">
             
+            {/* En-tête */}
             <div className="flex items-center justify-between p-2 border-b border-gray-600 min-h-[32px]">
               <h3 className="text-white text-sm font-medium">Sorts</h3>
               <div className="flex items-center space-x-2">
                 <Swords size={12} className="text-orange-400" />
-                <span className="text-orange-400 text-xs font-bold">{currentPA}/{maxPA} PA</span>
+                <span className="text-orange-400 text-xs font-bold">{finalPACurrent}/{finalPAMax} PA</span>
+                {!isLegacyMode && equipmentBonuses.paBonus > 0 && (
+                  <span className="text-green-400 text-xs">(+{equipmentBonuses.paBonus})</span>
+                )}
                 <Settings size={14} className="text-gray-400" />
               </div>
             </div>
             
             <div className="flex-1 flex flex-col justify-center p-3">
               
-              {/* LIGNE 1 - Sorts 1-8 */}
+              {/* Ligne 1 - Sorts 1-8 */}
               <div className="grid grid-cols-8 gap-2 mb-2">
-                {displaySpells.slice(0, 8).map((spell) => {
-                  const canCast = currentPA >= spell.paCost;
+                {TOUS_LES_SORTS.slice(0, 8).map((spell) => {
+                  const canCast = canCastSpell(spell, finalPACurrent);
+                  const isSelected = selectedSpellId === spell.id;
+                  const borderColor = getSpellBorderColor(spell, finalPACurrent, isSelected);
+                  
                   return (
                     <button
                       key={spell.id}
-                      onClick={() => onSpellClick?.(spell.id)}
-                      disabled={!canCast}
-                      className={`relative w-12 h-12 bg-gray-800 border-2 rounded-lg transition-all duration-200 flex items-center justify-center group ${
-                        canCast 
-                          ? `${getSpellBorderColor(spell.paCost, currentPA)} hover:scale-110` 
-                          : 'border-red-500 opacity-50 cursor-not-allowed'
-                      }`}
-                      title={`${spell.name} (${spell.paCost} PA)${spell.description ? ' - ' + spell.description : ''}`}
+                      onClick={() => handleSpellClick(spell.id)}
+                      disabled={!canCast && !isSelected}
+                      className={`relative w-12 h-12 border-2 rounded-lg transition-all duration-200 flex items-center justify-center group ${borderColor} ${
+                        canCast || isSelected
+                          ? 'hover:scale-110 cursor-pointer' 
+                          : 'opacity-50 cursor-not-allowed grayscale'
+                      } ${isSelected ? 'animate-pulse' : ''}`}
+                      title={`${spell.name} (${spell.paCost} PA) - ${spell.description}${isSelected ? ' - SÉLECTIONNÉ' : ''}`}
                     >
-                      <span className={`text-xl transition-transform ${canCast ? 'group-hover:scale-110' : ''}`}>
+                      <span className={`text-xl transition-transform ${(canCast || isSelected) ? 'group-hover:scale-110' : ''} ${isSelected ? 'text-yellow-300' : ''}`}>
                         {getSpellTypeIcon(spell)}
                       </span>
                       
-                      {/* ✅ Coût en PA (orange) */}
-                      <span className={`absolute -top-1 -left-1 text-white text-xs px-1 rounded ${
+                      {/* Coût en PA */}
+                      <span className={`absolute -top-1 -left-1 text-white text-xs px-1 rounded font-bold ${
+                        isSelected ? 'bg-yellow-600' : 
                         canCast ? 'bg-orange-600' : 'bg-red-600'
                       }`}>
                         {spell.paCost}
                       </span>
                       
-                      {/* ✅ Indicateur de type de sort */}
+                      {/* Indicateur de type */}
                       {spell.type === 'heal' && (
                         <span className="absolute -bottom-1 -right-1 bg-green-600 text-white text-xs px-1 rounded">
                           +
                         </span>
                       )}
                       
-                      {/* Tooltip au survol */}
+                      {/* Indicateur de sélection */}
+                      {isSelected && (
+                        <div className="absolute inset-0 border-2 border-yellow-400 rounded-lg animate-pulse">
+                          <div className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full flex items-center justify-center">
+                            <span className="text-black text-xs font-bold">✓</span>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Tooltip */}
                       <div className="absolute bottom-full mb-1 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded border border-gray-600 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
                         {spell.name} ({spell.paCost} PA)
+                        {isSelected && <div className="text-yellow-400">SÉLECTIONNÉ</div>}
                       </div>
                     </button>
                   );
                 })}
               </div>
               
-              {/* LIGNE 2 - Sorts 9-16 */}
+              {/* Ligne 2 - Sorts 9-16 */}
               <div className="grid grid-cols-8 gap-2">
-                {displaySpells.slice(8, 16).map((spell) => {
-                  const canCast = currentPA >= spell.paCost;
+                {TOUS_LES_SORTS.slice(8, 16).map((spell) => {
+                  const canCast = canCastSpell(spell, finalPACurrent);
+                  const isSelected = selectedSpellId === spell.id;
+                  const borderColor = getSpellBorderColor(spell, finalPACurrent, isSelected);
+                  
                   return (
                     <button
                       key={spell.id}
-                      onClick={() => onSpellClick?.(spell.id)}
-                      disabled={!canCast}
-                      className={`relative w-12 h-12 bg-gray-800 border-2 rounded-lg transition-all duration-200 flex items-center justify-center group ${
-                        canCast 
-                          ? `${getSpellBorderColor(spell.paCost, currentPA)} hover:scale-110` 
-                          : 'border-red-500 opacity-50 cursor-not-allowed'
-                      }`}
-                      title={`${spell.name} (${spell.paCost} PA)${spell.description ? ' - ' + spell.description : ''}`}
+                      onClick={() => handleSpellClick(spell.id)}
+                      disabled={!canCast && !isSelected}
+                      className={`relative w-12 h-12 border-2 rounded-lg transition-all duration-200 flex items-center justify-center group ${borderColor} ${
+                        canCast || isSelected
+                          ? 'hover:scale-110 cursor-pointer' 
+                          : 'opacity-50 cursor-not-allowed grayscale'
+                      } ${isSelected ? 'animate-pulse' : ''}`}
+                      title={`${spell.name} (${spell.paCost} PA) - ${spell.description}${isSelected ? ' - SÉLECTIONNÉ' : ''}`}
                     >
-                      <span className={`text-xl transition-transform ${canCast ? 'group-hover:scale-110' : ''}`}>
+                      <span className={`text-xl transition-transform ${(canCast || isSelected) ? 'group-hover:scale-110' : ''} ${isSelected ? 'text-yellow-300' : ''}`}>
                         {getSpellTypeIcon(spell)}
                       </span>
                       
-                      {/* Coût en PA (orange) */}
-                      <span className={`absolute -top-1 -left-1 text-white text-xs px-1 rounded ${
+                      {/* Coût en PA */}
+                      <span className={`absolute -top-1 -left-1 text-white text-xs px-1 rounded font-bold ${
+                        isSelected ? 'bg-yellow-600' : 
                         canCast ? 'bg-orange-600' : 'bg-red-600'
                       }`}>
                         {spell.paCost}
                       </span>
                       
-                      {/* Indicateur de type de sort */}
+                      {/* Indicateur de type */}
                       {spell.type === 'heal' && (
                         <span className="absolute -bottom-1 -right-1 bg-green-600 text-white text-xs px-1 rounded">
                           +
                         </span>
                       )}
                       
-                      {/* Tooltip au survol */}
+                      {/* Indicateur de sélection */}
+                      {isSelected && (
+                        <div className="absolute inset-0 border-2 border-yellow-400 rounded-lg animate-pulse">
+                          <div className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full flex items-center justify-center">
+                            <span className="text-black text-xs font-bold">✓</span>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Tooltip */}
                       <div className="absolute bottom-full mb-1 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded border border-gray-600 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
                         {spell.name} ({spell.paCost} PA)
+                        {isSelected && <div className="text-yellow-400">SÉLECTIONNÉ</div>}
                       </div>
                     </button>
                   );
                 })}
               </div>
+              
+              {/* Message d'aide */}
+              {isInCombat && (
+                <div className="mt-2 text-center">
+                  {selectedSpellId ? (
+                    <p className="text-yellow-400 text-xs animate-pulse">
+                      Sort sélectionné ! Utilisez la timeline au-dessus pour cibler
+                    </p>
+                  ) : (
+                    <p className="text-gray-400 text-xs">
+                      Cliquez sur un sort pour le sélectionner • Timeline de combat au-dessus
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>

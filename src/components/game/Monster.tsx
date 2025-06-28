@@ -1,6 +1,7 @@
 /**
  * COMPOSANT MONSTER - CRÉATURE QUI SE DÉPLACE ALÉATOIREMENT
  * ✅ CORRIGÉ: Les monstres ne bougent plus tous en même temps lors des clics
+ * ✅ NOUVEAU: Le nom n'apparaît qu'au survol de la souris
  * Gère l'affichage et la logique de déplacement d'un monstre sur la map
  */
 
@@ -29,6 +30,9 @@ const Monster: React.FC<MonsterProps> = ({
   getTileRenderPosition,
   isInCombat
 }) => {
+  // ✅ NOUVEAU: État pour gérer l'affichage du nom au hover
+  const [isHovered, setIsHovered] = useState(false);
+  
   // ✅ CORRIGÉ: Utilise useRef au lieu de useState pour lastMoveTime
   // Cela évite les re-renders inutiles
   const lastMoveTimeRef = useRef<number>(Date.now());
@@ -154,6 +158,15 @@ const Monster: React.FC<MonsterProps> = ({
     onMonsterClick(monster);
   };
 
+  // ✅ NOUVEAU: Fonctions pour gérer le hover
+  const handleMouseEnter = () => {
+    setIsHovered(true);
+  };
+
+  const handleMouseLeave = () => {
+    setIsHovered(false);
+  };
+
   return (
     <div
       className="absolute cursor-pointer pointer-events-auto z-[2500] hover:scale-110 transition-transform duration-200"
@@ -165,6 +178,9 @@ const Monster: React.FC<MonsterProps> = ({
         zIndex: 2500 + monster.position.y * 100 + monster.position.x // Ordre d'affichage isométrique
       }}
       onClick={handleMonsterClick}
+      // ✅ NOUVEAU: Événements de hover
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
       title={`${monster.name} (Niveau ${monster.level}) - ${monster.health}/${monster.maxHealth} PV`}
     >
       {/* Ombre du monstre */}
@@ -190,10 +206,12 @@ const Monster: React.FC<MonsterProps> = ({
           {monster.icon}
         </div>
         
-        {/* Nom du monstre */}
-        <div className="text-white text-xs font-bold bg-gray-900/80 px-2 py-1 rounded border border-gray-600 shadow-lg">
-          {monster.name}
-        </div>
+        {/* ✅ NOUVEAU: Nom du monstre - visible seulement au hover */}
+        {isHovered && (
+          <div className="text-white text-xs font-bold bg-gray-900/90 px-2 py-1 rounded border border-gray-600 shadow-lg transition-all duration-200 animate-fade-in">
+            {monster.name}
+          </div>
+        )}
         
         {/* Barre de vie */}
         <div className="w-12 h-1 bg-gray-800 rounded-full mt-1 border border-gray-600 overflow-hidden">
@@ -216,8 +234,10 @@ const Monster: React.FC<MonsterProps> = ({
           {monster.level}
         </div>
         
-        {/* Effet de brillance au survol */}
-        <div className="absolute inset-0 rounded-full bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-0 hover:opacity-100 transition-opacity duration-300" />
+        {/* ✅ NOUVEAU: Effet de brillance plus prononcé au survol */}
+        <div className={`absolute inset-0 rounded-full bg-gradient-to-r from-transparent via-white/20 to-transparent transition-opacity duration-300 ${
+          isHovered ? 'opacity-100' : 'opacity-0'
+        }`} />
       </div>
       
       {/* Effet de particules autour du monstre */}

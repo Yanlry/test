@@ -1,18 +1,15 @@
 /**
- * COMPOSANT TILED MAP RENDERER - VERSION COMPLÈTE AVEC PORTÉE DES SORTS
- * ✅ Affiche SEULEMENT les monstres d'exploration quand on explore
- * ✅ Affiche SEULEMENT les combattants actuels pendant le combat
- * ✅ Grille de combat tactique style Dofus
- * ✅ Zones de placement bleues/rouges
- * ✅ NOUVEAU: Affichage de la portée des sorts sélectionnés
- * ✅ NOUVEAU: Cases de ciblage colorées selon le type de sort
+ * COMPOSANT TILED MAP RENDERER - VERSION AVEC CLICS SUR COMBATTANTS
+ * ✅ NOUVEAU: Les combattants sur la map sont cliquables pour lancer des sorts
+ * ✅ SIMPLE: Clic sur joueur = sort de soin, clic sur ennemi = sort d'attaque
+ * ✅ MARCHE: Avec la nouvelle fonction handleCombatantClick du GameMap
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { TiledMap, TiledLayer, ParsedTileset } from '../../types/tiled';
 import { loadTiledMap, loadTileset } from '../../utils/tiledLoader';
 import { Position } from '../../types/game';
-import { Monster, CombatState } from '../../types/combat';
+import { Monster, CombatState, Combatant } from '../../types/combat';
 import MonsterComponent from './Monster';
 
 interface TiledMapRendererProps {
@@ -31,6 +28,9 @@ interface TiledMapRendererProps {
   onMonsterMove: (monsterId: string, newPosition: Position) => void;
   onMonsterClick: (monster: Monster) => void;
   combatState: CombatState; // État complet du combat
+  
+  // ✅ NOUVEAU: Prop pour cliquer sur les combattants
+  onCombatantClick?: (combatant: Combatant) => void;
 }
 
 const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
@@ -47,7 +47,9 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
   explorationMonsters,
   onMonsterMove,
   onMonsterClick,
-  combatState
+  combatState,
+  // ✅ NOUVEAU: Fonction pour cliquer sur les combattants
+  onCombatantClick
 }) => {
   // États pour les données Tiled
   const [tiledMap, setTiledMap] = useState<TiledMap | null>(null);
@@ -262,7 +264,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
     return distance <= playerCombatant.pm;
   }, [combatState]);
 
-  // ✅ NOUVEAU: Vérifie si une case est dans la portée du sort sélectionné
+  // Vérifie si une case est dans la portée du sort sélectionné
   const isInSpellRange = useCallback((x: number, y: number): boolean => {
     if (combatState.phase !== 'fighting' || !combatState.selectedSpell) return false;
     
@@ -270,13 +272,16 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
     if (!playerCombatant) return false;
     
     const distance = Math.abs(x - playerCombatant.position.x) + Math.abs(y - playerCombatant.position.y);
-    return distance <= combatState.selectedSpell.spell.range;
+    const inRange = distance <= combatState.selectedSpell.spell.range;
+    
+    return inRange;
   }, [combatState]);
 
-  // ✅ NOUVEAU: Vérifie si une case a une cible valide pour le sort
+  // Vérifie si une case a une cible valide pour le sort
   const getSpellTargetType = useCallback((x: number, y: number): 'valid-enemy' | 'valid-ally' | 'empty' | 'invalid' => {
     if (!combatState.selectedSpell) return 'invalid';
     
+    // Chercher un combattant sur cette position
     const target = combatState.combatants.find(c => 
       c.position.x === x && c.position.y === y && c.isAlive
     );
@@ -286,24 +291,31 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
     
     const spell = combatState.selectedSpell.spell;
     
+    // Si pas de cible sur cette case
     if (!target) {
-      // Pas de cible sur cette case
-      if (spell.type === 'heal' && spell.targetType === 'self') {
-        return 'empty'; // Les sorts de soin peuvent être lancés sur une case vide (retour sur soi)
-      }
       return 'empty';
     }
     
-    // Il y a une cible
-    if (spell.targetType === 'enemy' && target.team !== playerCombatant.team) {
-      return 'valid-enemy'; // Ennemi valide pour sort d'attaque
+    // Il y a une cible sur cette case
+    if (spell.type === 'damage') {
+      // Sort d'attaque - doit cibler un ennemi
+      if (target.team !== playerCombatant.team) {
+        return 'valid-enemy'; // Ennemi valide
+      } else {
+        return 'invalid'; // Impossible d'attaquer un allié
+      }
     }
     
-    if (spell.targetType === 'self' && target.team === playerCombatant.team) {
-      return 'valid-ally'; // Allié valide pour sort de soin/buff
+    if (spell.type === 'heal') {
+      // Sort de soin - doit cibler un allié
+      if (target.team === playerCombatant.team) {
+        return 'valid-ally'; // Allié valide (ou soi-même)
+      } else {
+        return 'invalid'; // Impossible de soigner un ennemi
+      }
     }
     
-    return 'invalid'; // Cible non valide
+    return 'invalid'; // Cas par défaut
   }, [combatState]);
 
   // Vérifie si une case est une zone de placement
@@ -324,7 +336,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
     return null;
   }, [combatState]);
 
-  // ✅ MODIFIÉ: Rendu de la grille de combat Dofus avec portée des sorts
+  // Rendu de la grille de combat Dofus
   const renderDofusCombatGrid = (): React.ReactNode[] => {
     if (!tiledMap || combatState.phase === 'exploring') return [];
     
@@ -351,7 +363,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
         let borderColor = 'rgba(100, 100, 100, 0.6)';
         let extraEffects = null;
         
-        // ✅ PRIORITÉ 1: Affichage de la portée des sorts (le plus important)
+        // PRIORITÉ 1: Affichage de la portée des sorts
         if (combatState.phase === 'fighting' && combatState.selectedSpell && inSpellRange) {
           if (spellTargetType === 'valid-enemy') {
             tileColor = 'rgba(255, 0, 0, 0.8)'; // Rouge vif pour ennemis
@@ -380,19 +392,10 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
           } else if (spellTargetType === 'empty') {
             tileColor = 'rgba(128, 0, 128, 0.6)'; // Violet pour cases vides dans la portée
             borderColor = 'rgba(128, 0, 128, 0.8)';
-            extraEffects = (
-              <circle
-                cx={DISPLAY_TILE_WIDTH/2}
-                cy={DISPLAY_TILE_HEIGHT/2}
-                r="8"
-                fill="rgba(128, 0, 128, 0.6)"
-                className="animate-pulse"
-              />
-            );
           }
         }
         
-        // ✅ PRIORITÉ 2: Zones de placement (si pas de sort sélectionné)
+        // PRIORITÉ 2: Zones de placement
         else if (combatState.phase === 'placement' && placementZone) {
           if (placementZone === 'player') {
             tileColor = 'rgba(59, 130, 246, 0.7)'; // Bleu pour le joueur
@@ -412,7 +415,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
           }
         } 
         
-        // ✅ PRIORITÉ 3: Zones de mouvement en combat (si pas de sort et pas placement)
+        // PRIORITÉ 3: Zones de mouvement en combat
         else if (combatState.phase === 'fighting') {
           if (occupiedBy?.id === 'player') {
             tileColor = 'rgba(59, 130, 246, 0.7)'; // Bleu intense pour le joueur
@@ -460,10 +463,10 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
                 strokeWidth="1.5"
               />
               
-              {/* ✅ Effets visuels spéciaux */}
+              {/* Effets visuels spéciaux */}
               {extraEffects}
               
-              {/* ✅ NOUVEAU: Texte d'aide pour les zones de placement */}
+              {/* Texte d'aide pour les zones de placement */}
               {combatState.phase === 'placement' && placementZone === 'player' && !occupiedBy && (
                 <text
                   x={DISPLAY_TILE_WIDTH/2}
@@ -477,7 +480,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
                 </text>
               )}
 
-              {/* ✅ NOUVEAU: Icônes pour les sorts */}
+              {/* Icônes pour les sorts */}
               {combatState.phase === 'fighting' && combatState.selectedSpell && inSpellRange && (
                 <text
                   x={DISPLAY_TILE_WIDTH/2}
@@ -489,7 +492,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
                 >
                   {spellTargetType === 'valid-enemy' ? '⚔️' : 
                    spellTargetType === 'valid-ally' ? '💚' : 
-                   '✨'}
+                   spellTargetType === 'empty' ? '✨' : '❌'}
                 </text>
               )}
             </svg>
@@ -576,7 +579,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
     return tiles;
   };
 
-  // ✅ MODIFIÉ: Zones cliquables avec gestion des sorts
+  // Zones cliquables avec gestion des sorts
   const renderClickableAreas = (): React.ReactNode[] => {
     if (!tiledMap) return [];
     
@@ -596,15 +599,18 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
           const getClickableStyle = () => {
             if (isGamePaused && combatState.phase === 'exploring') return 'cursor-not-allowed';
             
-            // ✅ PRIORITÉ 1: Curseur pour sorts
+            // PRIORITÉ 1: Curseur pour sorts
             if (combatState.phase === 'fighting' && combatState.selectedSpell && inSpellRange) {
-              if (spellTargetType === 'valid-enemy' || spellTargetType === 'valid-ally' || spellTargetType === 'empty') {
+              if (spellTargetType === 'valid-enemy' || spellTargetType === 'valid-ally') {
                 return 'cursor-crosshair hover:scale-105 transition-transform';
+              }
+              if (spellTargetType === 'empty') {
+                return 'cursor-pointer hover:scale-105 transition-transform';
               }
               return 'cursor-not-allowed';
             }
             
-            // ✅ PRIORITÉ 2: Curseur pour placement
+            // PRIORITÉ 2: Curseur pour placement
             if (combatState.phase === 'placement' && placementZone === 'player') {
               return 'cursor-pointer hover:scale-105 transition-transform';
             }
@@ -623,7 +629,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
             );
           };
 
-          // ✅ NOUVEAU: Overlay pour sort sélectionné
+          // Overlay pour sort sélectionné
           const getSpellOverlay = () => {
             if (combatState.phase !== 'fighting' || !combatState.selectedSpell || !inSpellRange) return null;
             
@@ -660,6 +666,24 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
             return null;
           };
           
+          // Tooltip amélioré
+          const getTooltipText = () => {
+            if (combatState.selectedSpell && inSpellRange) {
+              const spell = combatState.selectedSpell.spell;
+              return `${spell.name} - ${
+                spellTargetType === 'valid-enemy' ? 'Ennemi valide ⚔️' :
+                spellTargetType === 'valid-ally' ? 'Allié valide 💚' :
+                spellTargetType === 'empty' ? 'Case vide ✨' : 'Cible invalide ❌'
+              }`;
+            }
+            
+            if (combatState.phase === 'placement' && placementZone === 'player') {
+              return `(${x}, ${y}) - Zone de placement joueur - Cliquez pour vous placer`;
+            }
+            
+            return `(${x}, ${y}) - ${obstacleType} - ${isWalkable ? 'Accessible' : 'Bloqué'}${isGamePaused ? ' - PAUSE' : ''}`;
+          };
+          
           areas.push(
             <div
               key={`click-${x}-${y}`}
@@ -680,17 +704,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
               }}
               onMouseEnter={() => setHoveredTile({x, y})}
               onMouseLeave={() => setHoveredTile(null)}
-              title={
-                combatState.selectedSpell && inSpellRange
-                  ? `${combatState.selectedSpell.spell.name} - ${
-                      spellTargetType === 'valid-enemy' ? 'Ennemi valide' :
-                      spellTargetType === 'valid-ally' ? 'Allié valide' :
-                      spellTargetType === 'empty' ? 'Case vide' : 'Cible invalide'
-                    }`
-                  : combatState.phase === 'placement' && placementZone === 'player' 
-                    ? `(${x}, ${y}) - Zone de placement joueur - Cliquez pour vous placer`
-                    : `(${x}, ${y}) - ${obstacleType} - ${isWalkable ? 'Accessible' : 'Bloqué'}${isGamePaused ? ' - PAUSE' : ''}`
-              }
+              title={getTooltipText()}
             >
               {getDebugOverlay()}
               {getSpellOverlay()}
@@ -711,9 +725,10 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
     // En exploration : utiliser playerPosition du hook de mouvement
     // En combat : utiliser la position du combattant joueur
     let currentPlayerPosition = playerPosition;
+    let playerCombatant: Combatant | null = null;
     
     if (combatState.phase === 'fighting' || combatState.phase === 'placement') {
-      const playerCombatant = combatState.combatants.find(c => c.id === 'player');
+      playerCombatant = combatState.combatants.find(c => c.id === 'player') || null;
       if (playerCombatant) {
         currentPlayerPosition = playerCombatant.position;
       }
@@ -721,10 +736,26 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
     
     const playerRenderPosition = getTileRenderPosition(currentPlayerPosition.x, currentPlayerPosition.y);
     
+    // ✅ NOUVEAU: Vérifier si on peut cliquer sur le joueur pour un sort
+    const canClickForSpell = combatState.phase === 'fighting' && 
+                            combatState.selectedSpell && 
+                            onCombatantClick && 
+                            playerCombatant;
+
+    // ✅ NOUVEAU: Fonction pour gérer le clic sur le joueur
+    const handlePlayerClick = (e: React.MouseEvent) => {
+      e.stopPropagation(); // Empêcher la propagation vers la tile
+      
+      if (canClickForSpell && playerCombatant && onCombatantClick) {
+        console.log(`🎯 Clic sur le joueur sur la map pour lancer un sort`);
+        onCombatantClick(playerCombatant);
+      }
+    };
+    
     elements.push(
       <div
         key="player"
-        className="absolute flex items-center justify-center pointer-events-none"
+        className={`absolute flex items-center justify-center ${canClickForSpell ? 'pointer-events-auto cursor-crosshair hover:scale-110' : 'pointer-events-none'}`}
         style={{
           left: playerRenderPosition.x,
           top: playerRenderPosition.y + DISPLAY_TILE_HEIGHT,
@@ -732,16 +763,29 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
           height: DISPLAY_TILE_HEIGHT,
           zIndex: 2000 + currentPlayerPosition.y * 100 + currentPlayerPosition.x
         }}
+        onClick={handlePlayerClick}
+        title={canClickForSpell ? `Lancer ${combatState.selectedSpell?.spell.name} sur vous-même` : undefined}
       >
         <div 
           className="absolute inset-0 w-12 h-12 -translate-x-1/2 -translate-y-1/2 top-1/2 left-1/2 rounded-full blur-sm opacity-70 animate-pulse bg-blue-500"
         />
         <div 
-          className={`relative text-4xl drop-shadow-lg z-10 transition-transform duration-200 ${isMoving ? 'scale-110' : 'scale-100'}`}
+          className={`relative text-4xl drop-shadow-lg z-10 transition-transform duration-200 ${
+            isMoving ? 'scale-110' : 'scale-100'
+          } ${canClickForSpell ? 'hover:scale-125' : ''}`}
           style={{ color: '#3b82f6', filter: 'drop-shadow(0 0 12px #3b82f6)' }}
         >
           🧙‍♂️
         </div>
+
+        {/* ✅ NOUVEAU: Indicateur visuel si le joueur peut être ciblé */}
+        {canClickForSpell && combatState.selectedSpell && (
+          <div className="absolute inset-0 border-2 border-green-400 rounded-full animate-pulse pointer-events-none">
+            <div className="absolute -top-2 -right-2 w-6 h-6 bg-green-400 rounded-full flex items-center justify-center">
+              <span className="text-black text-xs font-bold">💚</span>
+            </div>
+          </div>
+        )}
       </div>
     );
     
@@ -782,10 +826,25 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
         .forEach(combatant => {
           const renderPosition = getTileRenderPosition(combatant.position.x, combatant.position.y);
           
+          // ✅ NOUVEAU: Vérifier si on peut cliquer sur ce combattant pour un sort
+          const canClickForSpell = combatState.phase === 'fighting' && 
+                                  combatState.selectedSpell && 
+                                  onCombatantClick;
+
+          // ✅ NOUVEAU: Fonction pour gérer le clic sur le combattant ennemi
+          const handleCombatantClick = (e: React.MouseEvent) => {
+            e.stopPropagation(); // Empêcher la propagation vers la tile
+            
+            if (canClickForSpell && onCombatantClick) {
+              console.log(`🎯 Clic sur ${combatant.name} sur la map pour lancer un sort`);
+              onCombatantClick(combatant);
+            }
+          };
+          
           entities.push(
             <div
               key={combatant.id}
-              className="absolute cursor-pointer pointer-events-auto z-[2500] hover:scale-110 transition-transform duration-200"
+              className={`absolute ${canClickForSpell ? 'cursor-crosshair pointer-events-auto hover:scale-110' : 'cursor-pointer pointer-events-auto hover:scale-110'} z-[2500] transition-transform duration-200`}
               style={{
                 left: renderPosition.x,
                 top: renderPosition.y,
@@ -793,7 +852,11 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
                 height: DISPLAY_TILE_HEIGHT * 2,
                 zIndex: 2500 + combatant.position.y * 100 + combatant.position.x
               }}
-              title={`${combatant.name} (${combatant.health}/${combatant.maxHealth} PV)`}
+              onClick={handleCombatantClick}
+              title={canClickForSpell ? 
+                `Lancer ${combatState.selectedSpell?.spell.name} sur ${combatant.name}` : 
+                `${combatant.name} (${combatant.health}/${combatant.maxHealth} PV)`
+              }
             >
               {/* Ombre du combattant */}
               <div 
@@ -843,6 +906,15 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
                     <span className="text-xs font-bold">✓</span>
                   </div>
                 )}
+
+                {/* ✅ NOUVEAU: Indicateur visuel si le combattant peut être ciblé */}
+                {canClickForSpell && combatState.selectedSpell && (
+                  <div className="absolute inset-0 border-2 border-red-400 rounded-lg animate-pulse pointer-events-none">
+                    <div className="absolute -top-2 -right-2 w-6 h-6 bg-red-400 rounded-full flex items-center justify-center">
+                      <span className="text-white text-xs font-bold">⚔️</span>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           );
@@ -889,7 +961,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
     );
   }
 
-  // ✅ AFFICHAGE FINAL AVEC SYSTÈME DOFUS COMPLET + PORTÉE DES SORTS
+  // ✅ AFFICHAGE FINAL AVEC COMBATTANTS CLIQUABLES
   return (
     <div 
       ref={mapContainerRef}
@@ -921,10 +993,10 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
         {renderClickableAreas()}
       </div>
       
-      {/* Rendu du joueur selon le contexte */}
+      {/* Rendu du joueur selon le contexte (maintenant cliquable en combat) */}
       {renderPlayer()}
       
-      {/* Rendu conditionnel des entités */}
+      {/* Rendu conditionnel des entités (maintenant cliquables en combat) */}
       <div className="absolute inset-0">
         {renderEntities()}
       </div>
@@ -946,10 +1018,12 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
               <div className="text-blue-400">
                 Combattants: {combatState.combatants.filter(c => c.isAlive).length}
               </div>
-              {/* ✅ NOUVEAU: Info du sort sélectionné */}
+              {/* ✅ Info du sort sélectionné avec debug */}
               {combatState.selectedSpell && (
                 <div className="text-purple-400">
                   🔮 Sort: {combatState.selectedSpell.spell.name} (Portée: {combatState.selectedSpell.spell.range})
+                  <br />Type: {combatState.selectedSpell.spell.type} | Cible: {combatState.selectedSpell.spell.targetType}
+                  <br />✅ Combattants cliquables sur la map !
                 </div>
               )}
             </>
