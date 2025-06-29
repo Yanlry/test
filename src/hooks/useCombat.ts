@@ -36,8 +36,8 @@ const AVAILABLE_SPELLS = {
     name: 'Coup de Dague', 
     paCost: 3, 
     type: 'damage',
-    minDamage: 15,
-    maxDamage: 25,
+    minDamage: 76,
+    maxDamage: 76,
     range: 1,
     description: 'Attaque rapide',
     targetType: 'enemy'

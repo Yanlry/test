@@ -1,17 +1,16 @@
 /**
- * PANNEAU JOUEUR PLEIN ÉCRAN AVEC SCROLL
- * ✅ VERSION FINALE: Scroll qui fonctionne parfaitement
- * ✅ LAYOUT: Utilise tout l'écran de manière harmonieuse
- * ✅ EXTENSIBLE: Facile d'ajouter de nouvelles rubriques
- * ✅ TOUTES LES FONCTIONNALITÉS: Conservées et améliorées
+ * PANNEAU STATISTIQUES JOUEUR - VERSION DÉDIÉE
+ * ✅ Focus sur les stats du personnage uniquement
+ * ✅ Scroll optimisé et layout harmonieux
+ * ✅ Interface moderne et intuitive
+ * ✅ Extensible pour de nouvelles fonctionnalités
  */
 
-import React, { useState } from 'react';
+import React from 'react';
 import { Character, PlayerStats, Position } from '../../types/game';
-import { DEFAULT_SPELLS } from '../../utils/gameConstants';
-import { X, Star, Heart, Zap, Plus, LogOut, ChevronDown, ChevronUp, Sword, Shield, Activity, Sparkles, Target, Brain, User, MapPin, Gauge, Award, Book, Settings, Trophy, Map } from 'lucide-react';
+import { X, Heart, Plus, Sword, Shield, Activity, Sparkles, Target, Brain, User, MapPin, Gauge, Award, Trophy, TrendingUp, Zap } from 'lucide-react';
 
-interface PlayerPanelProps {
+interface PlayerStatsePanelProps {
   character: Character;
   playerPosition: Position;
   currentMapName: string;
@@ -124,56 +123,7 @@ const StatCard: React.FC<{
   );
 };
 
-/**
- * Composant de sort moderne
- */
-const SpellCard: React.FC<{
-  spell: any;
-  index: number;
-}> = ({ spell, index }) => {
-  const isUnlocked = index < 3;
-  
-  return (
-    <div
-      className={`p-4 rounded-xl border transition-all text-left group hover:scale-105 ${
-        isUnlocked 
-          ? 'border-orange-500/50 bg-gradient-to-br from-orange-500/10 to-orange-600/20 hover:from-orange-500/20 hover:to-orange-600/30 shadow-lg shadow-orange-500/10' 
-          : 'border-gray-600/50 bg-gradient-to-br from-gray-800/50 to-gray-900/50 hover:from-gray-700/50 hover:to-gray-800/50'
-      }`}
-      title={`${spell.name} - ${spell.manaCost} mana`}
-    >
-      <div className="flex items-center space-x-4">
-        <div className={`w-16 h-16 rounded-xl flex items-center justify-center border-2 transition-all ${
-          isUnlocked 
-            ? 'border-orange-500/50 bg-orange-500/10 group-hover:scale-105' 
-            : 'border-gray-600 bg-gray-800/50'
-        }`}>
-          <div className="text-3xl group-hover:scale-110 transition-transform">
-            {spell.icon}
-          </div>
-        </div>
-        <div className="flex-1">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-white font-bold text-base">{spell.name}</p>
-            <div className="flex items-center space-x-2">
-              <span className="bg-blue-600/20 text-blue-400 px-3 py-1 rounded-lg text-sm border border-blue-600/30 font-medium">
-                {spell.manaCost} MP
-              </span>
-              {!isUnlocked && (
-                <span className="text-gray-500 text-xl">🔒</span>
-              )}
-            </div>
-          </div>
-          <p className="text-gray-400 text-sm">
-            {isUnlocked ? '✅ Sort disponible - Prêt à l\'utilisation' : '🔒 Sort verrouillé - Débloqué au niveau supérieur'}
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const PlayerPanel: React.FC<PlayerPanelProps> = ({
+const PlayerStatsPanel: React.FC<PlayerStatsePanelProps> = ({
   character,
   playerPosition,
   currentMapName,
@@ -200,23 +150,21 @@ const PlayerPanel: React.FC<PlayerPanelProps> = ({
   ];
 
   return (
-    // ✅ CONTENEUR PRINCIPAL AVEC SCROLL - LA CLÉ DU SUCCÈS !
     <div className="h-full bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex flex-col">
       
-      {/* ✅ HEADER FIXE - Ne bouge jamais quand on scroll */}
+      {/* HEADER FIXE */}
       <div className="flex-shrink-0 p-6 border-b border-gray-700 bg-gray-800/30">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
-            <div className="p-3 bg-orange-500/20 rounded-xl border border-orange-500/30">
-              <User size={24} className="text-orange-400" />
+            <div className="p-3 bg-blue-500/20 rounded-xl border border-blue-500/30">
+              <TrendingUp size={24} className="text-blue-400" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold text-white">Panneau du Personnage</h1>
-              <p className="text-gray-400">Gérez votre héros et ses capacités</p>
+              <h1 className="text-3xl font-bold text-white">Statistiques du Personnage</h1>
+              <p className="text-gray-400">Gérez les caractéristiques de votre héros</p>
             </div>
           </div>
           
-          {/* Boutons d'action dans le header */}
           <div className="flex items-center space-x-3">
             {availablePoints > 0 && (
               <div className="bg-green-600/20 text-green-400 px-4 py-2 rounded-xl border border-green-600/40 font-bold">
@@ -235,15 +183,15 @@ const PlayerPanel: React.FC<PlayerPanelProps> = ({
         </div>
       </div>
 
-      {/* ✅ ZONE SCROLLABLE - Ici tout le contenu peut défiler */}
+      {/* ZONE SCROLLABLE */}
       <div className="flex-1 overflow-y-auto">
         <div className="p-6">
           
-          {/* ✅ GRILLE PRINCIPALE EN 3 COLONNES */}
+          {/* GRILLE EN 2 COLONNES POUR PLUS D'ESPACE */}
           <div className="grid grid-cols-12 gap-6">
             
-            {/* COLONNE DE GAUCHE - Informations du personnage (4 colonnes) */}
-            <div className="col-span-4 space-y-6">
+            {/* COLONNE DE GAUCHE - Informations du personnage */}
+            <div className="col-span-5 space-y-6">
               
               {/* Carte du personnage */}
               <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 rounded-2xl p-6 border border-gray-700 shadow-xl">
@@ -277,6 +225,28 @@ const PlayerPanel: React.FC<PlayerPanelProps> = ({
                 </div>
               </div>
 
+              {/* Barres de vie et mana */}
+              <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 rounded-2xl p-6 border border-gray-700 shadow-xl space-y-6">
+                <h3 className="text-red-400 font-bold text-lg mb-4 flex items-center">
+                  <Heart size={20} className="mr-2" />
+                  État Vital
+                </h3>
+                <ProgressBar
+                  current={currentHP}
+                  max={maxHP}
+                  color="bg-gradient-to-r from-red-600 via-red-500 to-red-400"
+                  label="Points de Vie"
+                  icon="❤️"
+                />
+                <ProgressBar
+                  current={currentMP}
+                  max={maxMP}
+                  color="bg-gradient-to-r from-blue-600 via-blue-500 to-blue-400"
+                  label="Points de Mana"
+                  icon="💙"
+                />
+              </div>
+
               {/* Position et carte */}
               <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 rounded-2xl p-6 border border-gray-700 shadow-xl">
                 <h3 className="text-orange-400 font-bold text-lg mb-4 flex items-center">
@@ -295,29 +265,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = ({
                 </div>
               </div>
 
-              {/* Barres de vie et mana */}
-              <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 rounded-2xl p-6 border border-gray-700 shadow-xl space-y-6">
-                <h3 className="text-blue-400 font-bold text-lg mb-4 flex items-center">
-                  <Heart size={20} className="mr-2" />
-                  État du Héros
-                </h3>
-                <ProgressBar
-                  current={currentHP}
-                  max={maxHP}
-                  color="bg-gradient-to-r from-red-600 via-red-500 to-red-400"
-                  label="Points de Vie"
-                  icon="❤️"
-                />
-                <ProgressBar
-                  current={currentMP}
-                  max={maxMP}
-                  color="bg-gradient-to-r from-blue-600 via-blue-500 to-blue-400"
-                  label="Points de Mana"
-                  icon="💙"
-                />
-              </div>
-
-              {/* ✅ NOUVELLE SECTION - Statistiques Avancées (exemple pour montrer l'extensibilité) */}
+              {/* Statistiques de Combat */}
               <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 rounded-2xl p-6 border border-gray-700 shadow-xl">
                 <h3 className="text-green-400 font-bold text-lg mb-4 flex items-center">
                   <Trophy size={20} className="mr-2" />
@@ -329,19 +277,25 @@ const PlayerPanel: React.FC<PlayerPanelProps> = ({
                     <span className="text-red-400 font-bold">127</span>
                   </div>
                   <div className="flex justify-between items-center p-3 bg-gray-800/30 rounded-lg">
-                    <span className="text-gray-300">Sorts lancés:</span>
-                    <span className="text-purple-400 font-bold">89</span>
+                    <span className="text-gray-300">Dégâts infligés:</span>
+                    <span className="text-orange-400 font-bold">2,340</span>
                   </div>
                   <div className="flex justify-between items-center p-3 bg-gray-800/30 rounded-lg">
-                    <span className="text-gray-300">Quêtes terminées:</span>
-                    <span className="text-blue-400 font-bold">15</span>
+                    <span className="text-gray-300">Victoires:</span>
+                    <span className="text-green-400 font-bold">89%</span>
+                  </div>
+                  <div className="flex justify-between items-center p-3 bg-gray-800/30 rounded-lg">
+                    <span className="text-gray-300">Temps de jeu:</span>
+                    <span className="text-blue-400 font-bold">24h 15m</span>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* COLONNE DU MILIEU - Caractéristiques (5 colonnes) */}
-            <div className="col-span-5 space-y-6">
+            {/* COLONNE DE DROITE - Caractéristiques */}
+            <div className="col-span-7 space-y-6">
+              
+              {/* Caractéristiques principales */}
               <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 rounded-2xl p-6 border border-gray-700 shadow-xl">
                 <h3 className="text-orange-400 font-bold text-xl mb-6 flex items-center">
                   <Gauge size={24} className="mr-3" />
@@ -364,91 +318,84 @@ const PlayerPanel: React.FC<PlayerPanelProps> = ({
                 </div>
                 
                 {/* Informations sur les points */}
-                {availablePoints > 0 && (
+                {availablePoints > 0 ? (
                   <div className="p-4 bg-green-600/10 border border-green-600/30 rounded-xl">
                     <p className="text-green-400 text-center font-medium">
                       💡 Vous avez <span className="font-bold text-lg">{availablePoints} points</span> à répartir !
                     </p>
                   </div>
+                ) : (
+                  <div className="p-4 bg-blue-600/10 border border-blue-600/30 rounded-xl">
+                    <p className="text-blue-400 text-center font-medium">
+                      ✨ Toutes vos caractéristiques sont optimisées !
+                    </p>
+                  </div>
                 )}
               </div>
 
-              {/* ✅ NOUVELLE SECTION - Équipements (exemple pour montrer l'extensibilité) */}
+              {/* Équipements */}
               <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 rounded-2xl p-6 border border-gray-700 shadow-xl">
                 <h3 className="text-yellow-400 font-bold text-xl mb-6 flex items-center">
                   <Shield size={24} className="mr-3" />
                   Équipements Actuels
                 </h3>
-                <div className="grid grid-cols-3 gap-4">
-                  {/* Exemples d'équipements */}
-                  <div className="bg-gray-800/30 p-4 rounded-lg text-center">
+                <div className="grid grid-cols-4 gap-4">
+                  <div className="bg-gray-800/30 p-4 rounded-lg text-center hover:bg-gray-700/30 transition-colors">
                     <div className="text-3xl mb-2">⚔️</div>
                     <p className="text-white text-sm font-bold">Épée de Fer</p>
                     <p className="text-gray-400 text-xs">+15 Attaque</p>
                   </div>
-                  <div className="bg-gray-800/30 p-4 rounded-lg text-center">
+                  <div className="bg-gray-800/30 p-4 rounded-lg text-center hover:bg-gray-700/30 transition-colors">
                     <div className="text-3xl mb-2">🛡️</div>
                     <p className="text-white text-sm font-bold">Bouclier Renforcé</p>
                     <p className="text-gray-400 text-xs">+10 Défense</p>
                   </div>
-                  <div className="bg-gray-800/30 p-4 rounded-lg text-center">
+                  <div className="bg-gray-800/30 p-4 rounded-lg text-center hover:bg-gray-700/30 transition-colors">
                     <div className="text-3xl mb-2">👑</div>
                     <p className="text-white text-sm font-bold">Couronne Royale</p>
                     <p className="text-gray-400 text-xs">+5 Charisme</p>
                   </div>
-                </div>
-              </div>
-            </div>
-
-            {/* COLONNE DE DROITE - Sorts (3 colonnes) */}
-            <div className="col-span-3 space-y-6">
-              <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 rounded-2xl p-6 border border-gray-700 shadow-xl">
-                <h3 className="text-purple-400 font-bold text-xl mb-6 flex items-center">
-                  <Book size={24} className="mr-3" />
-                  Grimoire de Sorts
-                </h3>
-                
-                <div className="space-y-4">
-                  {DEFAULT_SPELLS.map((spell, index) => (
-                    <SpellCard
-                      key={spell.id}
-                      spell={spell}
-                      index={index}
-                    />
-                  ))}
-                </div>
-
-                {/* Statistiques des sorts */}
-                <div className="mt-6 p-4 bg-purple-600/10 border border-purple-600/30 rounded-xl">
-                  <h4 className="text-purple-400 font-bold text-sm mb-2">📊 Progression magique</h4>
-                  <div className="text-purple-300 text-xs space-y-1">
-                    <p>• {DEFAULT_SPELLS.filter((_, i) => i < 3).length}/{DEFAULT_SPELLS.length} sorts maîtrisés</p>
-                    <p>• Prochains sorts au niveau {character.level + 5}</p>
-                    <p>• École de magie : {character.class.element}</p>
+                  <div className="bg-gray-800/30 p-4 rounded-lg text-center hover:bg-gray-700/30 transition-colors">
+                    <div className="text-3xl mb-2">👟</div>
+                    <p className="text-white text-sm font-bold">Bottes Magiques</p>
+                    <p className="text-gray-400 text-xs">+3 Vitesse</p>
                   </div>
                 </div>
               </div>
 
-              {/* ✅ NOUVELLE SECTION - Objectifs (exemple pour montrer l'extensibilité) */}
+              {/* Objectifs et Progression */}
               <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 rounded-2xl p-6 border border-gray-700 shadow-xl">
                 <h3 className="text-cyan-400 font-bold text-xl mb-6 flex items-center">
-                  <Map size={24} className="mr-3" />
-                  Objectifs Actuels
+                  <Zap size={24} className="mr-3" />
+                  Progression & Objectifs
                 </h3>
-                <div className="space-y-3">
-                  <div className="p-3 bg-gray-800/30 rounded-lg">
-                    <p className="text-white text-sm font-bold">🎯 Atteindre le niveau 10</p>
-                    <div className="w-full bg-gray-700 rounded-full h-2 mt-2">
+                <div className="space-y-4">
+                  <div className="p-4 bg-gray-800/30 rounded-lg">
+                    <div className="flex justify-between items-center mb-2">
+                      <p className="text-white text-sm font-bold">🎯 Atteindre le niveau 10</p>
+                      <span className="text-blue-400 text-sm">30%</span>
+                    </div>
+                    <div className="w-full bg-gray-700 rounded-full h-2">
                       <div className="bg-blue-600 h-2 rounded-full" style={{ width: '30%' }}></div>
                     </div>
-                    <p className="text-gray-400 text-xs mt-1">Progression: 30%</p>
                   </div>
-                  <div className="p-3 bg-gray-800/30 rounded-lg">
-                    <p className="text-white text-sm font-bold">⚔️ Vaincre 50 ennemis</p>
-                    <div className="w-full bg-gray-700 rounded-full h-2 mt-2">
-                      <div className="bg-red-600 h-2 rounded-full" style={{ width: '80%' }}></div>
+                  <div className="p-4 bg-gray-800/30 rounded-lg">
+                    <div className="flex justify-between items-center mb-2">
+                      <p className="text-white text-sm font-bold">💪 Améliorer toutes les stats</p>
+                      <span className="text-green-400 text-sm">75%</span>
                     </div>
-                    <p className="text-gray-400 text-xs mt-1">Progression: 40/50</p>
+                    <div className="w-full bg-gray-700 rounded-full h-2">
+                      <div className="bg-green-600 h-2 rounded-full" style={{ width: '75%' }}></div>
+                    </div>
+                  </div>
+                  <div className="p-4 bg-gray-800/30 rounded-lg">
+                    <div className="flex justify-between items-center mb-2">
+                      <p className="text-white text-sm font-bold">🏆 Devenir légendaire</p>
+                      <span className="text-purple-400 text-sm">15%</span>
+                    </div>
+                    <div className="w-full bg-gray-700 rounded-full h-2">
+                      <div className="bg-purple-600 h-2 rounded-full" style={{ width: '15%' }}></div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -460,4 +407,4 @@ const PlayerPanel: React.FC<PlayerPanelProps> = ({
   );
 };
 
-export default PlayerPanel;
+export default PlayerStatsPanel;

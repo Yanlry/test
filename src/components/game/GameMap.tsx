@@ -1,10 +1,11 @@
 /**
- * GAME MAP - VERSION FINALE AVEC PA/PM COHÉRENTS
- * ✅ Erreur TypeScript corrigée (plus de props inexistantes)
+ * GAME MAP - VERSION FINALE AVEC INTÉGRATION COMPLÈTE DES PANNEAUX
+ * ✅ Toutes les fonctionnalités originales conservées
  * ✅ Timeline séparée au-dessus des sorts en bas à droite
  * ✅ Boutons combat dans le module central du GameUI
- * ✅ NOUVEAU: PA/PM identiques entre exploration et combat
- * ✅ Interface clean et fonctionnelle
+ * ✅ PA/PM identiques entre exploration et combat
+ * ✅ NOUVEAU: Intégration des panneaux PlayerPanel et SpellsPanel
+ * ✅ Interface clean et fonctionnelle complète
  */
 
 import React, { useState, useCallback, useEffect } from "react";
@@ -14,7 +15,9 @@ import TiledMapRenderer from "./TiledMapRenderer";
 
 // Import des composants UI
 import GameUI from "../GameUI";
+
 import PlayerPanel from "./PlayerPanel";
+import SpellsPanel from "./SpellPanel";
 import InventoryPanel from "./InventoryPanel";
 import CombatTimer from "./CombatTimer";
 // ✅ Timeline séparée
@@ -176,18 +179,16 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
   // États pour les panneaux plein écran
   const [showFullscreenCharacter, setShowFullscreenCharacter] = useState(false);
   const [showFullscreenInventory, setShowFullscreenInventory] = useState(false);
-  const [activeInventoryTab, setActiveInventoryTab] =
-    useState<InventoryTab>("equipement");
+  const [activeInventoryTab, setActiveInventoryTab] = useState<InventoryTab>("equipement");
+
+  // ✅ NOUVEAU: États pour les nouveaux panneaux
+  const [showPlayerPanel, setShowPlayerPanel] = useState(false);
+  const [showSpellsPanel, setShowSpellsPanel] = useState(false);
 
   // États pour les stats du joueur
-  const [playerStats, setPlayerStats] =
-    useState<PlayerStats>(DEFAULT_PLAYER_STATS);
-  const [availablePoints, setAvailablePoints] = useState(
-    DEFAULT_AVAILABLE_POINTS
-  );
-  const [statInputs, setStatInputs] = useState<
-    Record<keyof PlayerStats, number>
-  >({
+  const [playerStats, setPlayerStats] = useState<PlayerStats>(DEFAULT_PLAYER_STATS);
+  const [availablePoints, setAvailablePoints] = useState(DEFAULT_AVAILABLE_POINTS);
+  const [statInputs, setStatInputs] = useState<Record<keyof PlayerStats, number>>({
     vitality: 1,
     wisdom: 1,
     strength: 1,
@@ -211,7 +212,7 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
   const maxMP = 300 + playerStats.wisdom * 3;
 
   // isGamePaused ne bloque plus le combat
-  const isGamePaused = showFullscreenCharacter || showFullscreenInventory;
+  const isGamePaused = showFullscreenCharacter || showFullscreenInventory || showPlayerPanel || showSpellsPanel;
 
   // ✅ NOUVEAU: Fonctions pour obtenir les stats PA/PM cohérentes
   const getCurrentPA = (): number => {
@@ -327,8 +328,7 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
         },
       ];
 
-      const type =
-        monsterTypes[Math.floor(Math.random() * monsterTypes.length)];
+      const type = monsterTypes[Math.floor(Math.random() * monsterTypes.length)];
 
       let x, y;
       let attempts = 0;
@@ -420,11 +420,28 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
           return newValue;
         });
       }
+      // ✅ NOUVEAU: Raccourcis pour les panneaux
+      if (event.key === "Escape") {
+        setShowPlayerPanel(false);
+        setShowSpellsPanel(false);
+        setShowFullscreenCharacter(false);
+        setShowFullscreenInventory(false);
+      }
+      if (event.key === "c" || event.key === "C") {
+        if (!isGamePaused) {
+          setShowPlayerPanel(true);
+        }
+      }
+      if (event.key === "s" || event.key === "S") {
+        if (!isGamePaused) {
+          setShowSpellsPanel(true);
+        }
+      }
     };
 
     window.addEventListener("keydown", handleKeyPress);
     return () => window.removeEventListener("keydown", handleKeyPress);
-  }, []);
+  }, [isGamePaused]);
 
   // ===== GESTION DES STATS JOUEUR =====
 
@@ -458,6 +475,42 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
   const handleInventoryClick = useCallback(() => {
     console.log("🎒 Ouverture inventaire");
     setShowFullscreenInventory(true);
+  }, []);
+
+  // ✅ NOUVEAU: Callbacks pour les nouveaux panneaux
+  const handleStatsClick = useCallback(() => {
+    console.log("📊 Ouverture panneau statistiques");
+    setShowPlayerPanel(true);
+  }, []);
+
+  const handleSpellsClick = useCallback(() => {
+    console.log("🔮 Ouverture panneau sorts");
+    setShowSpellsPanel(true);
+  }, []);
+
+  const handleFriendsClick = useCallback(() => {
+    console.log("👥 Ouverture panneau amis");
+    // TODO: Implémenter le panneau des amis
+  }, []);
+
+  const handleGuildClick = useCallback(() => {
+    console.log("🛡️ Ouverture panneau guilde");
+    // TODO: Implémenter le panneau de guilde
+  }, []);
+
+  const handleMountClick = useCallback(() => {
+    console.log("🐎 Ouverture panneau montures");
+    // TODO: Implémenter le panneau des montures
+  }, []);
+
+  const handleMapClick = useCallback(() => {
+    console.log("🗺️ Ouverture panneau carte");
+    // TODO: Implémenter le panneau de carte
+  }, []);
+
+  const handleQuestsClick = useCallback(() => {
+    console.log("📜 Ouverture panneau quêtes");
+    // TODO: Implémenter le panneau des quêtes
   }, []);
 
   // ===== GESTION DES SORTS =====
@@ -851,6 +904,45 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
           </div>
         )}
 
+        {/* ✅ NOUVEAU: Messages de pause pour les nouveaux panneaux */}
+        {isGamePaused && showPlayerPanel && (
+          <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 z-40">
+            <div className="bg-gray-900/95 border-2 border-green-500 rounded-xl p-6 backdrop-blur-sm shadow-2xl shadow-green-500/30">
+              <div className="text-center text-white">
+                <Pause
+                  size={48}
+                  className="mx-auto mb-4 text-green-400 animate-pulse"
+                />
+                <p className="text-2xl font-bold mb-2 text-green-400">
+                  Panneau Statistiques Ouvert
+                </p>
+                <p className="text-gray-300">
+                  Fermez le panneau pour continuer à jouer
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {isGamePaused && showSpellsPanel && (
+          <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 z-40">
+            <div className="bg-gray-900/95 border-2 border-purple-500 rounded-xl p-6 backdrop-blur-sm shadow-2xl shadow-purple-500/30">
+              <div className="text-center text-white">
+                <Pause
+                  size={48}
+                  className="mx-auto mb-4 text-purple-400 animate-pulse"
+                />
+                <p className="text-2xl font-bold mb-2 text-purple-400">
+                  Grimoire de Sorts Ouvert
+                </p>
+                <p className="text-gray-300">
+                  Fermez le panneau pour continuer à jouer
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ===== MESSAGE DE PLACEMENT ===== */}
         {combat.combatState.phase === "placement" && (
           <div className="absolute top-4 left-1/4 transform -translate-x-1/2 z-[5000] pointer-events-none">
@@ -980,7 +1072,7 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
           onCombatantClick={handleCombatantClick}
         />
 
-        {/* ✅ INTERFACE UTILISATEUR AVEC STATS COHÉRENTES */}
+        {/* ✅ INTERFACE UTILISATEUR AVEC STATS COHÉRENTES ET NOUVEAUX CALLBACKS */}
         <GameUI
           currentHP={currentHP}
           maxHP={maxHP}
@@ -995,6 +1087,14 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
           onSpellClick={handleSpellClick}
           onInventoryClick={handleInventoryClick}
           onCharacterClick={handleCharacterClick}
+          // ✅ NOUVEAU: Callbacks pour la barre de menu
+          onStatsClick={handleStatsClick}
+          onSpellsClick={handleSpellsClick}
+          onFriendsClick={handleFriendsClick}
+          onGuildClick={handleGuildClick}
+          onMountClick={handleMountClick}
+          onMapClick={handleMapClick}
+          onQuestsClick={handleQuestsClick}
           selectedSpellId={combat.combatState.selectedSpell?.spellId || null}
           isInCombat={combat.combatState.phase === "fighting"}
           onEndTurn={handleEndTurn}
@@ -1015,6 +1115,8 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
       </div>
 
       {/* ===== PANNEAUX PLEIN ÉCRAN ===== */}
+      
+      {/* Panneau personnage original */}
       {showFullscreenCharacter && (
         <div className="fixed inset-0 z-[10000] bg-black/50 backdrop-blur-sm">
           <div className="absolute inset-4 bg-gray-900 rounded-lg border-2 border-gray-600 shadow-2xl overflow-hidden">
@@ -1040,6 +1142,41 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
         </div>
       )}
 
+      {/* ✅ NOUVEAU: Panneau statistiques */}
+      {showPlayerPanel && (
+        <div className="fixed inset-0 z-[10000] bg-gray-900/95 backdrop-blur-sm">
+          <PlayerPanel
+            character={character}
+            playerPosition={movement.playerPosition}
+            currentMapName={movement.getCurrentMapInfo().name}
+            playerStats={playerStats}
+            availablePoints={availablePoints}
+            statInputs={statInputs}
+            currentHP={currentHP}
+            maxHP={maxHP}
+            currentMP={currentMP}
+            maxMP={maxMP}
+            onImproveStat={handleImproveStat}
+            onUpdateStatInput={handleUpdateStatInput}
+            onBackToMenu={onBackToMenu}
+            onClose={() => setShowPlayerPanel(false)}
+          />
+        </div>
+      )}
+
+      {/* ✅ NOUVEAU: Panneau sorts */}
+      {showSpellsPanel && (
+        <div className="fixed inset-0 z-[10000] bg-gray-900/95 backdrop-blur-sm">
+          <SpellsPanel
+            character={character}
+            selectedSpellId={combat.combatState.selectedSpell?.spellId || null}
+            onSpellSelect={handleSpellClick}
+            onClose={() => setShowSpellsPanel(false)}
+          />
+        </div>
+      )}
+
+      {/* Panneau inventaire */}
       {showFullscreenInventory && (
         <div className="fixed inset-0 z-[10000] bg-black/50 backdrop-blur-sm">
           <div className="absolute inset-4 bg-gray-900 rounded-lg border-2 border-gray-600 shadow-2xl overflow-hidden">
