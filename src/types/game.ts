@@ -79,7 +79,7 @@ export interface User {
     description: string;
     icon: string;
     unlockedAt: number;
-    type: 'offensive' | 'defensive' | 'utility' | 'ultimate';
+    type: 'offensive' | 'defensive' | 'utility' | 'ultimate'  | 'healing';
     damage?: string;
     effect?: string;
     cooldown?: string;

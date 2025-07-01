@@ -1,8 +1,9 @@
 /**
- * COMPOSANT TILED MAP RENDERER - VERSION AVEC CLICS SUR COMBATTANTS
+ * COMPOSANT TILED MAP RENDERER - VERSION AVEC ANIMATIONS DE DÉGÂTS
  * ✅ NOUVEAU: Les combattants sur la map sont cliquables pour lancer des sorts
  * ✅ SIMPLE: Clic sur joueur = sort de soin, clic sur ennemi = sort d'attaque
  * ✅ MARCHE: Avec la nouvelle fonction handleCombatantClick du GameMap
+ * ✅ NOUVEAU: Animations "💥 -124" et "💚 +45" qui apparaissent et montent
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -11,6 +12,17 @@ import { loadTiledMap, loadTileset } from '../../utils/tiledLoader';
 import { Position } from '../../types/game';
 import { Monster, CombatState, Combatant } from '../../types/combat';
 import MonsterComponent from './Monster';
+
+// ✅ NOUVEAU: Interface pour les animations de dégâts
+interface DamageAnimation {
+  id: string;
+  targetId: string;
+  position: Position;
+  damage: number;
+  type: 'damage' | 'heal';
+  timestamp: number;
+  duration: number;
+}
 
 interface TiledMapRendererProps {
   mapPath: string;
@@ -29,8 +41,11 @@ interface TiledMapRendererProps {
   onMonsterClick: (monster: Monster) => void;
   combatState: CombatState; // État complet du combat
   
-  // ✅ NOUVEAU: Prop pour cliquer sur les combattants
+  // Prop pour cliquer sur les combattants
   onCombatantClick?: (combatant: Combatant) => void;
+  
+  // ✅ NOUVEAU: Prop pour les animations de dégâts
+  damageAnimations?: DamageAnimation[];
 }
 
 const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
@@ -48,8 +63,10 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
   onMonsterMove,
   onMonsterClick,
   combatState,
-  // ✅ NOUVEAU: Fonction pour cliquer sur les combattants
-  onCombatantClick
+  // Fonction pour cliquer sur les combattants
+  onCombatantClick,
+  // ✅ NOUVEAU: Animations de dégâts
+  damageAnimations = []
 }) => {
   // États pour les données Tiled
   const [tiledMap, setTiledMap] = useState<TiledMap | null>(null);
@@ -335,6 +352,54 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
     
     return null;
   }, [combatState]);
+
+  // ✅ NOUVEAU: Fonction pour rendre les animations de dégâts
+  const renderDamageAnimations = (): React.ReactNode[] => {
+    if (!damageAnimations || damageAnimations.length === 0) return [];
+    
+    return damageAnimations.map((animation) => {
+      const renderPosition = getTileRenderPosition(animation.position.x, animation.position.y);
+      
+      // Calculer l'âge de l'animation (de 0 à 1)
+      const age = (Date.now() - animation.timestamp) / animation.duration;
+      const progress = Math.min(age, 1);
+      
+      // Animation : monte et devient transparente
+      const yOffset = -progress * 60; // Monte de 60px
+      const opacity = 1 - progress; // Devient transparente
+      const scale = 1 + progress * 0.5; // Grossit légèrement
+      
+      // Couleurs selon le type
+      const isHeal = animation.type === 'heal';
+      const textColor = isHeal ? '#22c55e' : '#ef4444'; // Vert pour soins, rouge pour dégâts
+      const shadowColor = isHeal ? '#16a34a' : '#dc2626';
+      const emoji = isHeal ? '💚' : '💥';
+      const sign = isHeal ? '+' : '-';
+      
+      return (
+        <div
+          key={animation.id}
+          className="absolute pointer-events-none z-[3000] font-bold"
+          style={{
+            left: renderPosition.x + DISPLAY_TILE_WIDTH / 2,
+            top: renderPosition.y + DISPLAY_TILE_HEIGHT / 2 + yOffset,
+            transform: `translate(-50%, -50%) scale(${scale})`,
+            opacity: opacity,
+            color: textColor,
+            textShadow: `2px 2px 4px ${shadowColor}, 0 0 8px ${shadowColor}`,
+            fontSize: '24px',
+            fontWeight: 'bold',
+            zIndex: 3000 + animation.position.y * 100 + animation.position.x
+          }}
+        >
+          <div className="flex items-center space-x-1">
+            <span>{emoji}</span>
+            <span>{sign}{animation.damage}</span>
+          </div>
+        </div>
+      );
+    });
+  };
 
   // Rendu de la grille de combat Dofus
   const renderDofusCombatGrid = (): React.ReactNode[] => {
@@ -736,13 +801,13 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
     
     const playerRenderPosition = getTileRenderPosition(currentPlayerPosition.x, currentPlayerPosition.y);
     
-    // ✅ NOUVEAU: Vérifier si on peut cliquer sur le joueur pour un sort
+    // Vérifier si on peut cliquer sur le joueur pour un sort
     const canClickForSpell = combatState.phase === 'fighting' && 
                             combatState.selectedSpell && 
                             onCombatantClick && 
                             playerCombatant;
 
-    // ✅ NOUVEAU: Fonction pour gérer le clic sur le joueur
+    // Fonction pour gérer le clic sur le joueur
     const handlePlayerClick = (e: React.MouseEvent) => {
       e.stopPropagation(); // Empêcher la propagation vers la tile
       
@@ -778,7 +843,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
           🧙‍♂️
         </div>
 
-        {/* ✅ NOUVEAU: Indicateur visuel si le joueur peut être ciblé */}
+        {/* Indicateur visuel si le joueur peut être ciblé */}
         {canClickForSpell && combatState.selectedSpell && (
           <div className="absolute inset-0 border-2 border-green-400 rounded-full animate-pulse pointer-events-none">
             <div className="absolute -top-2 -right-2 w-6 h-6 bg-green-400 rounded-full flex items-center justify-center">
@@ -826,12 +891,12 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
         .forEach(combatant => {
           const renderPosition = getTileRenderPosition(combatant.position.x, combatant.position.y);
           
-          // ✅ NOUVEAU: Vérifier si on peut cliquer sur ce combattant pour un sort
+          // Vérifier si on peut cliquer sur ce combattant pour un sort
           const canClickForSpell = combatState.phase === 'fighting' && 
                                   combatState.selectedSpell && 
                                   onCombatantClick;
 
-          // ✅ NOUVEAU: Fonction pour gérer le clic sur le combattant ennemi
+          // Fonction pour gérer le clic sur le combattant ennemi
           const handleCombatantClick = (e: React.MouseEvent) => {
             e.stopPropagation(); // Empêcher la propagation vers la tile
             
@@ -907,7 +972,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
                   </div>
                 )}
 
-                {/* ✅ NOUVEAU: Indicateur visuel si le combattant peut être ciblé */}
+                {/* Indicateur visuel si le combattant peut être ciblé */}
                 {canClickForSpell && combatState.selectedSpell && (
                   <div className="absolute inset-0 border-2 border-red-400 rounded-lg animate-pulse pointer-events-none">
                     <div className="absolute -top-2 -right-2 w-6 h-6 bg-red-400 rounded-full flex items-center justify-center">
@@ -961,7 +1026,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
     );
   }
 
-  // ✅ AFFICHAGE FINAL AVEC COMBATTANTS CLIQUABLES
+  // ✅ AFFICHAGE FINAL AVEC COMBATTANTS CLIQUABLES ET ANIMATIONS DE DÉGÂTS
   return (
     <div 
       ref={mapContainerRef}
@@ -1000,6 +1065,11 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
       <div className="absolute inset-0">
         {renderEntities()}
       </div>
+
+      {/* ✅ NOUVEAU: Rendu des animations de dégâts */}
+      <div className="absolute inset-0">
+        {renderDamageAnimations()}
+      </div>
       
       {/* Informations de debug améliorées */}
       {process.env.NODE_ENV === 'development' && tiledMap && (
@@ -1008,6 +1078,13 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
           <div>🎮 DOFUS: {DISPLAY_TILE_WIDTH}x{DISPLAY_TILE_HEIGHT}</div>
           <div>Phase: {combatState.phase}</div>
           <div>Joueur: ({playerPosition.x}, {playerPosition.y})</div>
+          
+          {/* ✅ NOUVEAU: Info des animations */}
+          {damageAnimations.length > 0 && (
+            <div className="text-orange-400">
+              💥 Animations: {damageAnimations.length}
+            </div>
+          )}
           
           {/* Info de combat */}
           {combatState.phase === 'fighting' && (
@@ -1018,7 +1095,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
               <div className="text-blue-400">
                 Combattants: {combatState.combatants.filter(c => c.isAlive).length}
               </div>
-              {/* ✅ Info du sort sélectionné avec debug */}
+              {/* Info du sort sélectionné avec debug */}
               {combatState.selectedSpell && (
                 <div className="text-purple-400">
                   🔮 Sort: {combatState.selectedSpell.spell.name} (Portée: {combatState.selectedSpell.spell.range})

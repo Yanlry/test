@@ -1,10 +1,14 @@
 /**
- * GAME MAP - VERSION FINALE AVEC INTÉGRATION COMPLÈTE DES PANNEAUX
+ * GAME MAP - VERSION FINALE AVEC ANIMATIONS DE DÉGÂTS
  * ✅ Toutes les fonctionnalités originales conservées
  * ✅ Timeline séparée au-dessus des sorts en bas à droite
  * ✅ Boutons combat dans le module central du GameUI
  * ✅ PA/PM identiques entre exploration et combat
- * ✅ NOUVEAU: Intégration des panneaux PlayerPanel et SpellsPanel
+ * ✅ CORRIGÉ: Intégration des panneaux PlayerPanel, SpellsPanel et FriendsPanel
+ * ✅ CORRIGÉ: Tous les nouveaux panneaux (Guild, Mount, Map, Quests) fonctionnels
+ * ✅ CORRIGÉ: Sorts unifiés depuis le hook useCombatDofus (plus de double définition)
+ * ✅ CORRIGÉ: Système de téléportation fonctionnel
+ * ✅ NOUVEAU: Animations "💥 -124" et "💚 +45" lors des sorts !
  * ✅ Interface clean et fonctionnelle complète
  */
 
@@ -19,8 +23,14 @@ import GameUI from "../GameUI";
 import PlayerPanel from "./PlayerPanel";
 import SpellsPanel from "./SpellPanel";
 import InventoryPanel from "./InventoryPanel";
+import FriendsPanel from "./FriendsPanel";
+// Nouveaux imports
+import GuildPanel from "./GuildPanel";
+import MountPanel from "./MountPanel";
+import MapPanel from "./MapPanel";
+import QuestsPanel from "./QuestsPanel";
 import CombatTimer from "./CombatTimer";
-// ✅ Timeline séparée
+// Timeline séparée
 import CombatTimeline from "./CombatTimeline";
 
 import { useGameMovement } from "../../hooks/useGameMovement";
@@ -31,7 +41,6 @@ import {
   MAP_HEIGHT,
   DEFAULT_PLAYER_STATS,
   DEFAULT_AVAILABLE_POINTS,
-  DEFAULT_SPELLS,
 } from "../../utils/gameConstants";
 
 import {
@@ -53,113 +62,13 @@ import {
   Skull,
 } from "lucide-react";
 
-// ✅ NOUVEAU: Constantes pour les stats de base du joueur
+// Constantes pour les stats de base du joueur
 const PLAYER_BASE_STATS = {
-  PA_BASE: 6, // ← Tes vraies stats de base
+  PA_BASE: 6,
   PA_MAX: 6,
-  PM_BASE: 3, // ← Tes vraies stats de base
+  PM_BASE: 3,
   PM_MAX: 3,
 };
-
-// ✅ Liste de sorts complète (identique au hook)
-const TOUS_LES_SORTS = [
-  {
-    id: 1,
-    name: "Coup de Dague",
-    icon: "🗡️",
-    paCost: 3,
-    description: "Attaque rapide (15-25 dégâts)",
-    type: "damage",
-    targetType: "enemy",
-    minDamage: 15,
-    maxDamage: 25,
-    range: 1,
-  },
-  {
-    id: 2,
-    name: "Attaque Puissante",
-    icon: "⚔️",
-    paCost: 4,
-    description: "Attaque forte (25-35 dégâts)",
-    type: "damage",
-    targetType: "enemy",
-    minDamage: 25,
-    maxDamage: 35,
-    range: 1,
-  },
-  {
-    id: 3,
-    name: "Poison",
-    icon: "☠️",
-    paCost: 2,
-    description: "Empoisonne (10-15 dégâts)",
-    type: "damage",
-    targetType: "enemy",
-    minDamage: 10,
-    maxDamage: 15,
-    range: 2,
-  },
-  {
-    id: 4,
-    name: "Soin Mineur",
-    icon: "💚",
-    paCost: 3,
-    description: "Soigne 20-30 PV",
-    type: "heal",
-    targetType: "ally",
-    minHeal: 20,
-    maxHeal: 30,
-    range: 3,
-  },
-  {
-    id: 5,
-    name: "Fireball",
-    icon: "🔥",
-    paCost: 4,
-    description: "Boule de feu (30-40 dégâts)",
-    type: "damage",
-    targetType: "enemy",
-    minDamage: 30,
-    maxDamage: 40,
-    range: 4,
-  },
-  {
-    id: 6,
-    name: "Soin Majeur",
-    icon: "✨",
-    paCost: 5,
-    description: "Soigne 40-50 PV",
-    type: "heal",
-    targetType: "ally",
-    minHeal: 40,
-    maxHeal: 50,
-    range: 2,
-  },
-  {
-    id: 7,
-    name: "Éclair",
-    icon: "⚡",
-    paCost: 5,
-    description: "Attaque électrique (35-45 dégâts)",
-    type: "damage",
-    targetType: "enemy",
-    minDamage: 35,
-    maxDamage: 45,
-    range: 5,
-  },
-  {
-    id: 8,
-    name: "Gel",
-    icon: "❄️",
-    paCost: 3,
-    description: "Gèle l'ennemi (20-25 dégâts)",
-    type: "damage",
-    targetType: "enemy",
-    minDamage: 20,
-    maxDamage: 25,
-    range: 3,
-  },
-];
 
 interface GameMapProps {
   character: Character;
@@ -170,8 +79,11 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
   // Hook de mouvement
   const movement = useGameMovement();
 
-  // Hook de combat avec IA et timer
+  // ✅ NOUVEAU: Hook de combat avec animations de dégâts
   const combat = useCombatDofus();
+
+  // ✅ RÉCUPÉRER LES SORTS UNIFIÉS DEPUIS LE HOOK
+  const unifiedSpells = Object.values(combat.AVAILABLE_SPELLS);
 
   // État pour les monstres d'exploration
   const [explorationMonsters, setExplorationMonsters] = useState<Monster[]>([]);
@@ -181,9 +93,16 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
   const [showFullscreenInventory, setShowFullscreenInventory] = useState(false);
   const [activeInventoryTab, setActiveInventoryTab] = useState<InventoryTab>("equipement");
 
-  // ✅ NOUVEAU: États pour les nouveaux panneaux
+  // États pour les panneaux existants
   const [showPlayerPanel, setShowPlayerPanel] = useState(false);
   const [showSpellsPanel, setShowSpellsPanel] = useState(false);
+  const [showFriendsPanel, setShowFriendsPanel] = useState(false);
+
+  // États pour les nouveaux panneaux
+  const [showGuildPanel, setShowGuildPanel] = useState(false);
+  const [showMountPanel, setShowMountPanel] = useState(false);
+  const [showMapPanel, setShowMapPanel] = useState(false);
+  const [showQuestsPanel, setShowQuestsPanel] = useState(false);
 
   // États pour les stats du joueur
   const [playerStats, setPlayerStats] = useState<PlayerStats>(DEFAULT_PLAYER_STATS);
@@ -211,58 +130,58 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
   const maxHP = 500 + playerStats.vitality * 5;
   const maxMP = 300 + playerStats.wisdom * 3;
 
-  // isGamePaused ne bloque plus le combat
-  const isGamePaused = showFullscreenCharacter || showFullscreenInventory || showPlayerPanel || showSpellsPanel;
+  // isGamePaused inclut TOUS les panneaux
+  const isGamePaused = showFullscreenCharacter || 
+                      showFullscreenInventory || 
+                      showPlayerPanel || 
+                      showSpellsPanel || 
+                      showFriendsPanel ||
+                      showGuildPanel ||
+                      showMountPanel ||
+                      showMapPanel ||
+                      showQuestsPanel;
 
-  // ✅ NOUVEAU: Fonctions pour obtenir les stats PA/PM cohérentes
+  // Fonctions pour obtenir les stats PA/PM cohérentes
   const getCurrentPA = (): number => {
     if (combat.combatState.phase === "fighting") {
-      // En combat : utilise les PA du combattant
       const playerCombatant = combat.combatState.combatants.find(
         (c) => c.id === "player"
       );
       return playerCombatant?.pa || PLAYER_BASE_STATS.PA_BASE;
     } else {
-      // En exploration : utilise les stats de base
       return PLAYER_BASE_STATS.PA_BASE;
     }
   };
 
   const getMaxPA = (): number => {
     if (combat.combatState.phase === "fighting") {
-      // En combat : utilise les PA max du combattant
       const playerCombatant = combat.combatState.combatants.find(
         (c) => c.id === "player"
       );
       return playerCombatant?.maxPA || PLAYER_BASE_STATS.PA_MAX;
     } else {
-      // En exploration : utilise les stats de base
       return PLAYER_BASE_STATS.PA_MAX;
     }
   };
 
   const getCurrentPM = (): number => {
     if (combat.combatState.phase === "fighting") {
-      // En combat : utilise les PM du combattant
       const playerCombatant = combat.combatState.combatants.find(
         (c) => c.id === "player"
       );
       return playerCombatant?.pm || PLAYER_BASE_STATS.PM_BASE;
     } else {
-      // En exploration : utilise les stats de base
       return PLAYER_BASE_STATS.PM_BASE;
     }
   };
 
   const getMaxPM = (): number => {
     if (combat.combatState.phase === "fighting") {
-      // En combat : utilise les PM max du combattant
       const playerCombatant = combat.combatState.combatants.find(
         (c) => c.id === "player"
       );
       return playerCombatant?.maxPM || PLAYER_BASE_STATS.PM_MAX;
     } else {
-      // En exploration : utilise les stats de base
       return PLAYER_BASE_STATS.PM_MAX;
     }
   };
@@ -420,13 +339,19 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
           return newValue;
         });
       }
-      // ✅ NOUVEAU: Raccourcis pour les panneaux
+      // Raccourcis pour fermer tous les panneaux
       if (event.key === "Escape") {
         setShowPlayerPanel(false);
         setShowSpellsPanel(false);
         setShowFullscreenCharacter(false);
         setShowFullscreenInventory(false);
+        setShowFriendsPanel(false);
+        setShowGuildPanel(false);
+        setShowMountPanel(false);
+        setShowMapPanel(false);
+        setShowQuestsPanel(false);
       }
+      // Raccourcis pour ouvrir les panneaux
       if (event.key === "c" || event.key === "C") {
         if (!isGamePaused) {
           setShowPlayerPanel(true);
@@ -435,6 +360,31 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
       if (event.key === "s" || event.key === "S") {
         if (!isGamePaused) {
           setShowSpellsPanel(true);
+        }
+      }
+      if (event.key === "f" || event.key === "F") {
+        if (!isGamePaused) {
+          setShowFriendsPanel(true);
+        }
+      }
+      if (event.key === "g" || event.key === "G") {
+        if (!isGamePaused) {
+          setShowGuildPanel(true);
+        }
+      }
+      if (event.key === "m" || event.key === "M") {
+        if (!isGamePaused) {
+          setShowMountPanel(true);
+        }
+      }
+      if (event.key === "w" || event.key === "W") {
+        if (!isGamePaused) {
+          setShowMapPanel(true);
+        }
+      }
+      if (event.key === "q" || event.key === "Q") {
+        if (!isGamePaused) {
+          setShowQuestsPanel(true);
         }
       }
     };
@@ -477,7 +427,7 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
     setShowFullscreenInventory(true);
   }, []);
 
-  // ✅ NOUVEAU: Callbacks pour les nouveaux panneaux
+  // Callbacks pour les panneaux existants
   const handleStatsClick = useCallback(() => {
     console.log("📊 Ouverture panneau statistiques");
     setShowPlayerPanel(true);
@@ -490,43 +440,46 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
 
   const handleFriendsClick = useCallback(() => {
     console.log("👥 Ouverture panneau amis");
-    // TODO: Implémenter le panneau des amis
+    setShowFriendsPanel(true);
   }, []);
 
+  // Nouveaux callbacks fonctionnels
   const handleGuildClick = useCallback(() => {
     console.log("🛡️ Ouverture panneau guilde");
-    // TODO: Implémenter le panneau de guilde
+    setShowGuildPanel(true);
   }, []);
 
   const handleMountClick = useCallback(() => {
     console.log("🐎 Ouverture panneau montures");
-    // TODO: Implémenter le panneau des montures
+    setShowMountPanel(true);
   }, []);
 
   const handleMapClick = useCallback(() => {
     console.log("🗺️ Ouverture panneau carte");
-    // TODO: Implémenter le panneau de carte
+    setShowMapPanel(true);
   }, []);
 
   const handleQuestsClick = useCallback(() => {
     console.log("📜 Ouverture panneau quêtes");
-    // TODO: Implémenter le panneau des quêtes
+    setShowQuestsPanel(true);
   }, []);
 
-  // ===== GESTION DES SORTS =====
+  // ===== GESTION DES SORTS (CORRIGÉE) =====
 
   const handleSpellClick = useCallback(
     (spellId: number) => {
-      console.log(`🔮 === CLIC SUR SORT ===`);
+      console.log(`🔮 === CLIC SUR SORT (VERSION AVEC ANIMATIONS) ===`);
       console.log(`📜 Sort ID: ${spellId}`);
       console.log(`🎮 Phase: ${combat.combatState.phase}`);
 
-      // Trouver le sort dans notre liste
-      const spellData = TOUS_LES_SORTS.find((s) => s.id === spellId);
+      // Utiliser les sorts unifiés depuis le hook
+      const spellData = combat.AVAILABLE_SPELLS[spellId as keyof typeof combat.AVAILABLE_SPELLS];
       if (!spellData) {
-        console.log(`❌ Sort ${spellId} non trouvé !`);
+        console.log(`❌ Sort ${spellId} non trouvé dans les sorts unifiés !`);
         return;
       }
+
+      console.log(`📋 Sort trouvé: ${spellData.name} (Portée: ${spellData.range}, PA: ${spellData.paCost})`);
 
       // SI PAS EN COMBAT: Ignore
       if (combat.combatState.phase !== "fighting") {
@@ -540,19 +493,8 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
         return;
       }
 
-      // LOGIQUE DE DÉSÉLECTION
-      const currentSelectedSpell = combat.combatState.selectedSpell;
-      if (currentSelectedSpell && currentSelectedSpell.spellId === spellId) {
-        console.log(`🔄 DÉSÉLECTION du sort ${spellData.name}`);
-        const result = combat.selectSpell("player", -1);
-        if (result.success) {
-          console.log(`✅ Sort désélectionné`);
-        }
-        return;
-      }
-
-      // SÉLECTION D'UN NOUVEAU SORT
-      console.log(`⚔️ SÉLECTION du sort ${spellData.name}`);
+      // Utiliser directement la fonction selectSpell du hook
+      console.log(`⚔️ Demande de sélection du sort ${spellData.name}`);
       const result = combat.selectSpell("player", spellId);
 
       if (result.success) {
@@ -568,7 +510,7 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
 
   const handleCombatantClick = useCallback(
     (targetCombatant: Combatant) => {
-      console.log(`🎯 === CLIC SUR COMBATTANT ===`);
+      console.log(`🎯 === CLIC SUR COMBATTANT (VERSION AVEC ANIMATIONS) ===`);
       console.log(
         `🎯 Cible: ${targetCombatant.name} (${targetCombatant.team})`
       );
@@ -586,15 +528,15 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
         return;
       }
 
-      // LANCER LE SORT SUR LE COMBATTANT
-      console.log(`✨ Lancement du sort sur ${targetCombatant.name}`);
+      // LANCER LE SORT SUR LE COMBATTANT (maintenant avec animations !)
+      console.log(`✨ Lancement du sort sur ${targetCombatant.name} avec animations !`);
 
       const result = combat.castSpellOnCombatant(targetCombatant);
 
       if (result.success) {
-        console.log(`✅ SORT LANCÉ: ${result.message}`);
-        if (result.damage) console.log(`💥 Dégâts: ${result.damage}`);
-        if (result.heal) console.log(`💚 Soins: ${result.heal}`);
+        console.log(`✅ SORT LANCÉ AVEC ANIMATION: ${result.message}`);
+        if (result.damage) console.log(`💥 Dégâts animés: ${result.damage}`);
+        if (result.heal) console.log(`💚 Soins animés: ${result.heal}`);
       } else {
         console.log(`❌ SORT ÉCHOUÉ: ${result.message}`);
       }
@@ -602,10 +544,10 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
     [combat]
   );
 
-  // ✅ FONCTION pour gérer les clics depuis la timeline séparée
+  // Fonction pour gérer les clics depuis la timeline séparée
   const handleTargetSelectFromTimeline = useCallback(
     (target: Combatant) => {
-      console.log(`🎯 Clic depuis la timeline séparée sur ${target.name}`);
+      console.log(`🎯 Clic depuis la timeline séparée sur ${target.name} avec animations`);
 
       // Utilise la même logique que handleCombatantClick
       if (!combat.combatState.selectedSpell) {
@@ -616,9 +558,9 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
       const result = combat.castSpellOnCombatant(target);
 
       if (result.success) {
-        console.log(`✅ SORT LANCÉ DEPUIS TIMELINE: ${result.message}`);
-        if (result.damage) console.log(`💥 Dégâts: ${result.damage}`);
-        if (result.heal) console.log(`💚 Soins: ${result.heal}`);
+        console.log(`✅ SORT LANCÉ DEPUIS TIMELINE AVEC ANIMATION: ${result.message}`);
+        if (result.damage) console.log(`💥 Dégâts animés: ${result.damage}`);
+        if (result.heal) console.log(`💚 Soins animés: ${result.heal}`);
       } else {
         console.log(`❌ SORT ÉCHOUÉ DEPUIS TIMELINE: ${result.message}`);
       }
@@ -865,7 +807,7 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
           </div>
         )}
 
-        {/* ===== MESSAGES DE PAUSE ===== */}
+        {/* ===== MESSAGES DE PAUSE POUR TOUS LES PANNEAUX ===== */}
         {isGamePaused && showFullscreenCharacter && (
           <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 z-40">
             <div className="bg-gray-900/95 border-2 border-blue-500 rounded-xl p-6 backdrop-blur-sm shadow-2xl shadow-blue-500/30">
@@ -904,7 +846,7 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
           </div>
         )}
 
-        {/* ✅ NOUVEAU: Messages de pause pour les nouveaux panneaux */}
+        {/* Messages de pause pour les panneaux existants */}
         {isGamePaused && showPlayerPanel && (
           <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 z-40">
             <div className="bg-gray-900/95 border-2 border-green-500 rounded-xl p-6 backdrop-blur-sm shadow-2xl shadow-green-500/30">
@@ -934,6 +876,102 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
                 />
                 <p className="text-2xl font-bold mb-2 text-purple-400">
                   Grimoire de Sorts Ouvert
+                </p>
+                <p className="text-gray-300">
+                  Fermez le panneau pour continuer à jouer
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {isGamePaused && showFriendsPanel && (
+          <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 z-40">
+            <div className="bg-gray-900/95 border-2 border-emerald-500 rounded-xl p-6 backdrop-blur-sm shadow-2xl shadow-emerald-500/30">
+              <div className="text-center text-white">
+                <Pause
+                  size={48}
+                  className="mx-auto mb-4 text-emerald-400 animate-pulse"
+                />
+                <p className="text-2xl font-bold mb-2 text-emerald-400">
+                  Panneau des Amis Ouvert
+                </p>
+                <p className="text-gray-300">
+                  Fermez le panneau pour continuer à jouer
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Nouveaux messages de pause */}
+        {isGamePaused && showGuildPanel && (
+          <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 z-40">
+            <div className="bg-gray-900/95 border-2 border-red-500 rounded-xl p-6 backdrop-blur-sm shadow-2xl shadow-red-500/30">
+              <div className="text-center text-white">
+                <Pause
+                  size={48}
+                  className="mx-auto mb-4 text-red-400 animate-pulse"
+                />
+                <p className="text-2xl font-bold mb-2 text-red-400">
+                  Panneau de Guilde Ouvert
+                </p>
+                <p className="text-gray-300">
+                  Fermez le panneau pour continuer à jouer
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {isGamePaused && showMountPanel && (
+          <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 z-40">
+            <div className="bg-gray-900/95 border-2 border-yellow-500 rounded-xl p-6 backdrop-blur-sm shadow-2xl shadow-yellow-500/30">
+              <div className="text-center text-white">
+                <Pause
+                  size={48}
+                  className="mx-auto mb-4 text-yellow-400 animate-pulse"
+                />
+                <p className="text-2xl font-bold mb-2 text-yellow-400">
+                  Écurie des Montures Ouverte
+                </p>
+                <p className="text-gray-300">
+                  Fermez le panneau pour continuer à jouer
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {isGamePaused && showMapPanel && (
+          <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 z-40">
+            <div className="bg-gray-900/95 border-2 border-teal-500 rounded-xl p-6 backdrop-blur-sm shadow-2xl shadow-teal-500/30">
+              <div className="text-center text-white">
+                <Pause
+                  size={48}
+                  className="mx-auto mb-4 text-teal-400 animate-pulse"
+                />
+                <p className="text-2xl font-bold mb-2 text-teal-400">
+                  Carte du Monde Ouverte
+                </p>
+                <p className="text-gray-300">
+                  Fermez le panneau pour continuer à jouer
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {isGamePaused && showQuestsPanel && (
+          <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 z-40">
+            <div className="bg-gray-900/95 border-2 border-indigo-500 rounded-xl p-6 backdrop-blur-sm shadow-2xl shadow-indigo-500/30">
+              <div className="text-center text-white">
+                <Pause
+                  size={48}
+                  className="mx-auto mb-4 text-indigo-400 animate-pulse"
+                />
+                <p className="text-2xl font-bold mb-2 text-indigo-400">
+                  Journal de Quêtes Ouvert
                 </p>
                 <p className="text-gray-300">
                   Fermez le panneau pour continuer à jouer
@@ -1045,7 +1083,7 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
           )}
         </div>
 
-        {/* ✅ TIMELINE SÉPARÉE EN BAS À DROITE AVEC TIMER INTÉGRÉ */}
+        {/* Timeline séparée en bas à droite avec timer intégré */}
         <CombatTimeline
           combatState={combat.combatState}
           onTargetSelect={handleTargetSelectFromTimeline}
@@ -1054,7 +1092,7 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
           isTimerActive={combat.combatState.phase === "fighting"}
         />
 
-        {/* ===== COMPOSANT TILED ===== */}
+        {/* ===== COMPOSANT TILED AVEC ANIMATIONS DE DÉGÂTS ===== */}
         <TiledMapRenderer
           mapPath={mapPath}
           playerPosition={movement.playerPosition}
@@ -1070,24 +1108,31 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
           onMonsterClick={handleMonsterClick}
           combatState={combat.combatState}
           onCombatantClick={handleCombatantClick}
+          // ✅ NOUVEAU: Passer les animations de dégâts au renderer
+          damageAnimations={combat.damageAnimations}
         />
 
-        {/* ✅ INTERFACE UTILISATEUR AVEC STATS COHÉRENTES ET NOUVEAUX CALLBACKS */}
+        {/* Interface utilisateur avec sorts unifiés et tous les callbacks */}
         <GameUI
           currentHP={currentHP}
           maxHP={maxHP}
           currentMP={currentMP}
           maxMP={maxMP}
-          // ✅ CORRIGÉ: Utilise les nouvelles fonctions pour des stats cohérentes
           currentPA={getCurrentPA()}
           maxPA={getMaxPA()}
           currentPM={getCurrentPM()}
           maxPM={getMaxPM()}
-          spells={DEFAULT_SPELLS}
+          // Utiliser les sorts unifiés depuis le hook
+          spells={unifiedSpells.slice(0, 16).map(spell => ({
+            id: spell.id,
+            name: spell.name,
+            icon: spell.icon,
+            manaCost: spell.paCost, // Note: dans GameUI c'est "manaCost" mais c'est pour les PA
+            cooldown: 0
+          }))}
           onSpellClick={handleSpellClick}
           onInventoryClick={handleInventoryClick}
           onCharacterClick={handleCharacterClick}
-          // ✅ NOUVEAU: Callbacks pour la barre de menu
           onStatsClick={handleStatsClick}
           onSpellsClick={handleSpellsClick}
           onFriendsClick={handleFriendsClick}
@@ -1114,7 +1159,7 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
         )}
       </div>
 
-      {/* ===== PANNEAUX PLEIN ÉCRAN ===== */}
+      {/* ===== PANNEAUX PLEIN ÉCRAN - TOUS INTÉGRÉS ===== */}
       
       {/* Panneau personnage original */}
       {showFullscreenCharacter && (
@@ -1142,7 +1187,7 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
         </div>
       )}
 
-      {/* ✅ NOUVEAU: Panneau statistiques */}
+      {/* Panneau statistiques */}
       {showPlayerPanel && (
         <div className="fixed inset-0 z-[10000] bg-gray-900/95 backdrop-blur-sm">
           <PlayerPanel
@@ -1164,7 +1209,7 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
         </div>
       )}
 
-      {/* ✅ NOUVEAU: Panneau sorts */}
+      {/* Panneau sorts */}
       {showSpellsPanel && (
         <div className="fixed inset-0 z-[10000] bg-gray-900/95 backdrop-blur-sm">
           <SpellsPanel
@@ -1172,6 +1217,59 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
             selectedSpellId={combat.combatState.selectedSpell?.spellId || null}
             onSpellSelect={handleSpellClick}
             onClose={() => setShowSpellsPanel(false)}
+          />
+        </div>
+      )}
+
+      {/* Panneau des amis */}
+      {showFriendsPanel && (
+        <div className="fixed inset-0 z-[10000] bg-gray-900/95 backdrop-blur-sm">
+          <FriendsPanel
+            character={character}
+            onClose={() => setShowFriendsPanel(false)}
+          />
+        </div>
+      )}
+
+      {/* Nouveaux panneaux intégrés */}
+      {showGuildPanel && (
+        <div className="fixed inset-0 z-[10000] bg-gray-900/95 backdrop-blur-sm">
+          <GuildPanel
+            character={character}
+            onClose={() => setShowGuildPanel(false)}
+          />
+        </div>
+      )}
+
+      {showMountPanel && (
+        <div className="fixed inset-0 z-[10000] bg-gray-900/95 backdrop-blur-sm">
+          <MountPanel
+            character={character}
+            onClose={() => setShowMountPanel(false)}
+          />
+        </div>
+      )}
+
+      {showMapPanel && (
+        <div className="fixed inset-0 z-[10000] bg-gray-900/95 backdrop-blur-sm">
+          <MapPanel
+            character={character}
+            playerPosition={movement.playerPosition}
+            onClose={() => setShowMapPanel(false)}
+            onTeleport={(position) => {
+              console.log(`🚀 Téléportation vers (${position.x}, ${position.y})`);
+              movement.teleportTo(position);
+              setShowMapPanel(false); // Fermer la carte après téléportation
+            }}
+          />
+        </div>
+      )}
+
+      {showQuestsPanel && (
+        <div className="fixed inset-0 z-[10000] bg-gray-900/95 backdrop-blur-sm">
+          <QuestsPanel
+            character={character}
+            onClose={() => setShowQuestsPanel(false)}
           />
         </div>
       )}
