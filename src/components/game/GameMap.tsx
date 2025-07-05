@@ -10,6 +10,7 @@
  * ✅ CORRIGÉ: Système de téléportation fonctionnel
  * ✅ NOUVEAU: Animations "💥 -124" et "💚 +45" lors des sorts !
  * ✅ Interface clean et fonctionnelle complète
+ * ✅ CORRIGÉ: Types DamageAnimation unifiés
  */
 
 import React, { useState, useCallback, useEffect } from "react";
@@ -29,7 +30,6 @@ import GuildPanel from "./GuildPanel";
 import MountPanel from "./MountPanel";
 import MapPanel from "./MapPanel";
 import QuestsPanel from "./QuestsPanel";
-import CombatTimer from "./CombatTimer";
 // Timeline séparée
 import CombatTimeline from "./CombatTimeline";
 
@@ -293,6 +293,12 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
     );
     setExplorationMonsters(initialMonsters);
     console.log("🐲 Monstres d'exploration générés:", initialMonsters);
+    // Ajouter un raccourci clavier pour le diagnostic (dans useEffect):
+window.addEventListener('keydown', (event) => {
+  if (event.key === 'T' || event.key === 't') {
+    diagnoseCombatIssue();
+  }
+});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -314,6 +320,29 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
     },
     []
   );
+
+  const diagnoseCombatIssue = useCallback(() => {
+    if (combat.combatState.phase === 'fighting') {
+      const player = combat.combatState.combatants.find(c => c.id === 'player');
+      const enemy = combat.combatState.combatants.find(c => c.team === 'enemy');
+      
+      if (player && enemy) {
+        const distance = Math.abs(player.position.x - enemy.position.x) + 
+                        Math.abs(player.position.y - enemy.position.y);
+        
+        console.log(`
+  🔧 === DIAGNOSTIC COMBAT ===
+  ├─ Joueur: (${player.position.x}, ${player.position.y})
+  ├─ Ennemi: (${enemy.position.x}, ${enemy.position.y}) 
+  ├─ Distance: ${distance}
+  ├─ Tour: ${combat.combatState.turnNumber}
+  ├─ Sort sélectionné: ${combat.combatState.selectedSpell?.spell.name || 'Aucun'}
+  └─ PA joueur: ${player.pa}/${player.maxPA}
+        `);
+      }
+    }
+  }, [combat.combatState]);
+
 
   const handleMonsterClick = useCallback(
     (monster: Monster) => {
@@ -738,18 +767,6 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
     }
   }, [combat.combatState.phase, combat, generateExplorationMonster]);
 
-  // ===== FONCTION POUR LE TIMER =====
-
-  const getCurrentPlayerName = useCallback(() => {
-    const currentCombatant = combat.combatState.combatants.find(
-      (c) => c.id === combat.combatState.currentTurnCombatantId
-    );
-    return currentCombatant ? currentCombatant.name : "Joueur";
-  }, [
-    combat.combatState.combatants,
-    combat.combatState.currentTurnCombatantId,
-  ]);
-
   // Chemin vers la map Tiled
   const mapPath = "/assets/maps/IsometricMap.tmj";
 
@@ -1092,7 +1109,7 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
           isTimerActive={combat.combatState.phase === "fighting"}
         />
 
-        {/* ===== COMPOSANT TILED AVEC ANIMATIONS DE DÉGÂTS ===== */}
+        {/* ===== COMPOSANT TILED AVEC ANIMATIONS DE DÉGÂTS OPTIMISÉES ===== */}
         <TiledMapRenderer
           mapPath={mapPath}
           playerPosition={movement.playerPosition}
@@ -1108,7 +1125,7 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
           onMonsterClick={handleMonsterClick}
           combatState={combat.combatState}
           onCombatantClick={handleCombatantClick}
-          // ✅ NOUVEAU: Passer les animations de dégâts au renderer
+          // ✅ CORRIGÉ: Types unifiés, plus besoin de cast
           damageAnimations={combat.damageAnimations}
         />
 

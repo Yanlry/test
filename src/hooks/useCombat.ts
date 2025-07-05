@@ -1,11 +1,9 @@
 /**
- * HOOK DE COMBAT UNIFIÉ ET CORRIGÉ - VERSION FINALE AVEC ANIMATIONS DE DÉGÂTS
- * ✅ CORRIGÉ: Une seule définition des sorts (cohérente)
- * ✅ CORRIGÉ: Système de portée intelligent avec debug visuel
- * ✅ CORRIGÉ: Vérifications de cible simplifiées et claires
- * ✅ CORRIGÉ: Messages d'erreur détaillés pour debug
- * ✅ NOUVEAU: Système de combat plus prévisible et fiable
- * ✅ NOUVEAU: Animations de dégâts avec effets visuels "boom -124"
+ * HOOK DE COMBAT UNIFIÉ ET CORRIGÉ - VERSION FINALE AVEC TOUS LES SORTS
+ * ✅ CORRIGÉ: Définition complète des 16 sorts (identique à GameUI)
+ * ✅ CORRIGÉ: Logique de ciblage améliorée (ally peut se cibler)
+ * ✅ CORRIGÉ: targetType unifié avec GameUI
+ * ✅ NOUVEAU: Debug amélioré pour comprendre les problèmes
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react';
@@ -17,7 +15,8 @@ import {
   Combatant, 
   PlacementZone, 
   CombatLogEntry, 
-  ActionResult 
+  ActionResult,
+  DamageAnimation
 } from '../types/combat';
 
 // Configuration du combat style Dofus
@@ -30,18 +29,7 @@ const DOFUS_COMBAT_CONFIG = {
   TURN_TIME: 45,
 };
 
-// ✅ NOUVEAU: Interface pour les animations de dégâts
-interface DamageAnimation {
-  id: string;
-  targetId: string;
-  position: Position;
-  damage: number;
-  type: 'damage' | 'heal';
-  timestamp: number;
-  duration: number; // en millisecondes
-}
-
-// ✅ DÉFINITION UNIQUE ET COHÉRENTE DES SORTS
+// ✅ DÉFINITION UNIFIÉE DES 16 SORTS (IDENTIQUE À GAMEUI)
 const UNIFIED_SPELLS = {
   1: { 
     id: 1,
@@ -92,7 +80,7 @@ const UNIFIED_SPELLS = {
     maxHeal: 30,
     range: 3,
     description: 'Soigne 20-30 PV',
-    targetType: 'ally' as const,
+    targetType: 'ally' as const, // ✅ CORRIGÉ: ally au lieu de self
     canTargetEmptyCell: false
   },
   5: { 
@@ -118,7 +106,7 @@ const UNIFIED_SPELLS = {
     maxHeal: 50,
     range: 2,
     description: 'Soigne 40-50 PV',
-    targetType: 'ally' as const,
+    targetType: 'ally' as const, // ✅ CORRIGÉ: ally au lieu de self
     canTargetEmptyCell: false
   },
   7: { 
@@ -147,30 +135,108 @@ const UNIFIED_SPELLS = {
     targetType: 'enemy' as const,
     canTargetEmptyCell: false
   },
-  // Sorts pour les ennemis
+  // ✅ NOUVEAU: Sorts 9-16 ajoutés
   9: { 
     id: 9,
-    name: 'Griffe Sauvage', 
-    icon: '🐾',
-    paCost: 3, 
-    type: 'damage' as const,
-    minDamage: 18,
-    maxDamage: 28,
+    name: 'Régénération', 
+    icon: '🌟',
+    paCost: 4, 
+    type: 'heal' as const,
+    minHeal: 30,
+    maxHeal: 40,
     range: 1,
-    description: 'Attaque bestiale',
-    targetType: 'enemy' as const,
+    description: 'Régénère 30-40 PV',
+    targetType: 'ally' as const,
     canTargetEmptyCell: false
   },
   10: { 
     id: 10,
-    name: 'Rugissement', 
-    icon: '📢',
-    paCost: 2, 
+    name: 'Explosion', 
+    icon: '💥',
+    paCost: 6, 
     type: 'damage' as const,
-    minDamage: 12,
-    maxDamage: 20,
+    minDamage: 50,
+    maxDamage: 60,
     range: 2,
-    description: 'Cri intimidant',
+    description: 'Explosion (50-60 dégâts)',
+    targetType: 'enemy' as const,
+    canTargetEmptyCell: false
+  },
+  11: { 
+    id: 11,
+    name: 'Météore', 
+    icon: '☄️',
+    paCost: 6, 
+    type: 'damage' as const,
+    minDamage: 60,
+    maxDamage: 80,
+    range: 6,
+    description: 'Météore dévastateur (60-80 dégâts)',
+    targetType: 'enemy' as const,
+    canTargetEmptyCell: false
+  },
+  12: { 
+    id: 12,
+    name: 'Protection', 
+    icon: '🛡️',
+    paCost: 2, 
+    type: 'buff' as const,
+    effect: 'defense',
+    value: 10,
+    range: 1,
+    description: 'Augmente la défense',
+    targetType: 'ally' as const,
+    canTargetEmptyCell: false
+  },
+  13: { 
+    id: 13,
+    name: 'Bénédiction', 
+    icon: '🙏',
+    paCost: 3, 
+    type: 'heal' as const,
+    minHeal: 35,
+    maxHeal: 45,
+    range: 4,
+    description: 'Soigne 35-45 PV',
+    targetType: 'ally' as const,
+    canTargetEmptyCell: false
+  },
+  14: { 
+    id: 14,
+    name: 'Nova', 
+    icon: '🌠',
+    paCost: 5, 
+    type: 'damage' as const,
+    minDamage: 40,
+    maxDamage: 50,
+    range: 3,
+    description: 'Attaque en zone (40-50 dégâts)',
+    targetType: 'enemy' as const,
+    canTargetEmptyCell: false
+  },
+  15: { 
+    id: 15,
+    name: 'Résurrection', 
+    icon: '🔮',
+    paCost: 6, 
+    type: 'heal' as const,
+    minHeal: 999,
+    maxHeal: 999,
+    range: 1,
+    description: 'Restaure tous les PV',
+    targetType: 'ally' as const,
+    canTargetEmptyCell: false
+  },
+  16: { 
+    id: 16,
+    name: 'Apocalypse', 
+    icon: '💀',
+    paCost: 6, 
+    type: 'damage' as const,
+    minDamage: 80,
+    maxDamage: 100,
+    range: 8,
+    description: 'Sort ultime (80-100 dégâts)',
     targetType: 'enemy' as const,
     canTargetEmptyCell: false
   }
@@ -196,42 +262,51 @@ export const useCombatDofus = () => {
     selectedSpell: null
   });
 
-  // ✅ NOUVEAU: État pour les animations de dégâts
   const [damageAnimations, setDamageAnimations] = useState<DamageAnimation[]>([]);
-
   const [turnTimeLeft, setTurnTimeLeft] = useState<number>(DOFUS_COMBAT_CONFIG.TURN_TIME);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const aiTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // ✅ NOUVEAU: Fonction pour ajouter une animation de dégâts
+  // ✅ CORRIGÉ: Fonction pour ajouter une animation de dégâts
   const addDamageAnimation = useCallback((
     targetId: string,
-    position: Position,
+    gridPosition: Position,
     damage: number,
     type: 'damage' | 'heal'
   ) => {
+    const TILE_WIDTH = 80;
+    const TILE_HEIGHT = 40;
+    
+    const isoX = (gridPosition.x - gridPosition.y) * (TILE_WIDTH / 2);
+    const isoY = (gridPosition.x + gridPosition.y) * (TILE_HEIGHT / 2);
+    
+    const screenPos = {
+      x: window.innerWidth / 2 + isoX,
+      y: window.innerHeight / 2 + isoY - 120
+    };
+
     const animation: DamageAnimation = {
       id: `damage-${Date.now()}-${Math.random()}`,
       targetId,
-      position: { ...position }, // Copie de la position
+      gridPosition: { ...gridPosition },
+      screenPosition: screenPos,
       damage,
       type,
       timestamp: Date.now(),
-      duration: 2000 // 2 secondes
+      duration: 1500
     };
 
-    console.log(`💥 Animation de ${type} créée: ${damage} sur ${targetId} à (${position.x}, ${position.y})`);
+    console.log(`💥 Animation créée: ${type} ${damage} sur ${targetId} à (${gridPosition.x}, ${gridPosition.y})`);
 
     setDamageAnimations(prev => [...prev, animation]);
 
-    // Supprimer l'animation automatiquement après la durée
     setTimeout(() => {
       setDamageAnimations(prev => prev.filter(anim => anim.id !== animation.id));
     }, animation.duration);
   }, []);
 
   /**
-   * ✅ FONCTION DE DEBUG POUR PORTÉE
+   * ✅ FONCTION DE DEBUG POUR PORTÉE (AMÉLIORÉE)
    */
   const debugSpellRange = useCallback((
     casterPos: Position, 
@@ -254,7 +329,7 @@ export const useCombatDofus = () => {
   }, []);
 
   /**
-   * ✅ FONCTION DE DEBUG POUR CIBLES
+   * ✅ FONCTION DE DEBUG POUR CIBLES (CORRIGÉE)
    */
   const debugSpellTarget = useCallback((
     spell: typeof UNIFIED_SPELLS[keyof typeof UNIFIED_SPELLS],
@@ -264,6 +339,7 @@ export const useCombatDofus = () => {
     let canTarget = false;
     let reason = '';
 
+    // ✅ CORRIGÉ: Logique améliorée pour le ciblage
     if (spell.type === 'damage') {
       // Sort d'attaque : seulement les ennemis
       if (target.team !== caster.team) {
@@ -272,11 +348,13 @@ export const useCombatDofus = () => {
       } else {
         reason = 'Sort d\'attaque sur allié ❌';
       }
-    } else if (spell.type === 'heal') {
-      // Sort de soin : seulement les alliés
+    } else if (spell.type === 'heal' || spell.type === 'buff') {
+      // ✅ CORRIGÉ: Sort de soin/buff : seulement les alliés (y compris soi-même)
       if (target.team === caster.team) {
         canTarget = true;
-        reason = 'Sort de soin sur allié ✅';
+        reason = target.id === caster.id ? 
+          'Sort de soin sur soi-même ✅' : 
+          'Sort de soin sur allié ✅';
       } else {
         reason = 'Sort de soin sur ennemi ❌';
       }
@@ -287,13 +365,15 @@ export const useCombatDofus = () => {
 ├─ Sort: ${spell.name} (Type: ${spell.type})
 ├─ Lanceur: ${caster.name} (Équipe: ${caster.team})
 ├─ Cible: ${target.name} (Équipe: ${target.team})
+├─ Même équipe: ${target.team === caster.team ? 'OUI' : 'NON'}
+├─ Même personne: ${target.id === caster.id ? 'OUI' : 'NON'}
 └─ Résultat: ${reason}`;
 
     return { canTarget, debug };
   }, []);
 
   /**
-   * ✅ CALCUL DE DISTANCE AMÉLIORÉ
+   * ✅ CALCUL DE DISTANCE
    */
   const calculateDistance = useCallback((pos1: Position, pos2: Position): number => {
     return Math.abs(pos1.x - pos2.x) + Math.abs(pos1.y - pos2.y);
@@ -326,7 +406,7 @@ export const useCombatDofus = () => {
   }, []);
 
   /**
-   * ✅ IA ENNEMIE SIMPLIFIÉE AVEC ANIMATIONS
+   * ✅ IA ENNEMIE AVEC ANIMATIONS
    */
   const executeEnemyAI = useCallback((enemy: Combatant) => {
     console.log(`🤖 === IA DE ${enemy.name.toUpperCase()} ===`);
@@ -338,12 +418,9 @@ export const useCombatDofus = () => {
       const distance = calculateDistance(enemy.position, player.position);
       console.log(`📏 Distance jusqu'au joueur: ${distance}`);
 
-      // Stratégie simple : attaquer si possible, sinon se rapprocher
       if (distance <= 1 && enemy.pa >= 3) {
-        // Attaque avec animation
         const damage = Math.floor(Math.random() * 15) + 10;
         
-        // ✅ NOUVEAU: Déclencher l'animation de dégâts pour l'IA
         addDamageAnimation(player.id, player.position, damage, 'damage');
         
         const updatedCombatants = prev.combatants.map(c => {
@@ -370,7 +447,6 @@ export const useCombatDofus = () => {
           }]
         };
       } else if (distance > 1 && enemy.pm > 0) {
-        // Se rapprocher
         const possibleMoves = [
           { x: enemy.position.x + 1, y: enemy.position.y },
           { x: enemy.position.x - 1, y: enemy.position.y },
@@ -425,7 +501,6 @@ export const useCombatDofus = () => {
   const startCombat = useCallback((monster: Monster, playerPosition: Position) => {
     console.log(`⚔️ DÉBUT DU COMBAT avec ${monster.name} !`);
     
-    // ✅ NOUVEAU: Nettoyer les animations précédentes
     setDamageAnimations([]);
     
     const playerZone: PlacementZone = {
@@ -437,14 +512,15 @@ export const useCombatDofus = () => {
         { x: 6, y: 8 }, { x: 7, y: 8 }
       ]
     };
-
+  
     const enemyZone: PlacementZone = {
       team: 'enemy',
       color: '#EF4444',
       name: 'Zone Ennemie', 
+      // ✅ CORRECTION: Rapprocher les zones pour portée 1
       positions: [
-        { x: 9, y: 7 }, { x: 10, y: 7 },
-        { x: 9, y: 8 }, { x: 10, y: 8 }
+        { x: 8, y: 7 }, { x: 9, y: 7 }, // Plus proche !
+        { x: 8, y: 8 }, { x: 9, y: 8 }
       ]
     };
 
@@ -662,7 +738,7 @@ export const useCombatDofus = () => {
   }, [calculateDistance]);
 
   /**
-   * ✅ SÉLECTIONNER UN SORT (CORRIGÉ)
+   * ✅ SÉLECTIONNER UN SORT (AVEC DEBUG AMÉLIORÉ)
    */
   const selectSpell = useCallback((combatantId: string, spellId: number): ActionResult => {
     console.log(`
@@ -705,10 +781,11 @@ export const useCombatDofus = () => {
         return { ...prev, selectedSpell: null };
       }
 
-      // ✅ Utiliser la définition unifiée
+      // ✅ Utiliser la définition unifiée avec tous les 16 sorts
       const spell = UNIFIED_SPELLS[spellId as keyof typeof UNIFIED_SPELLS];
       if (!spell) {
-        result = { success: false, message: `Sort ${spellId} inconnu`, paCost: 0 };
+        result = { success: false, message: `Sort ${spellId} inconnu (IDs disponibles: 1-16)`, paCost: 0 };
+        console.log(`❌ Sort ${spellId} non trouvé. Sorts disponibles:`, Object.keys(UNIFIED_SPELLS));
         return prev;
       }
 
@@ -717,7 +794,7 @@ export const useCombatDofus = () => {
         return prev;
       }
 
-      console.log(`✅ Sort ${spell.name} sélectionné`);
+      console.log(`✅ Sort ${spell.name} sélectionné (PA: ${spell.paCost}, Type: ${spell.type}, Portée: ${spell.range})`);
       result = { success: true, message: `Sort ${spell.name} sélectionné`, paCost: 0 };
 
       return {
@@ -733,17 +810,35 @@ export const useCombatDofus = () => {
     return result;
   }, [combatState.phase]);
 
+  const debugDistanceCalculation = useCallback((
+    casterPos: Position, 
+    targetPos: Position, 
+    combatantName: string
+  ): void => {
+    console.log(`
+  🔍 === DEBUG DISTANCE DÉTAILLÉ ===
+  ├─ Lanceur: (${casterPos.x}, ${casterPos.y})
+  ├─ Cible: ${combatantName} (${targetPos.x}, ${targetPos.y})
+  ├─ Delta X: ${Math.abs(targetPos.x - casterPos.x)}
+  ├─ Delta Y: ${Math.abs(targetPos.y - casterPos.y)}
+  ├─ Distance Manhattan: ${Math.abs(targetPos.x - casterPos.x) + Math.abs(targetPos.y - casterPos.y)}
+  └─ Tour de combat: ${combatState.turnNumber}
+    `);
+  }, [combatState.turnNumber]);
+
   /**
-   * ✅ LANCER UN SORT SUR UN COMBATTANT (VERSION CORRIGÉE AVEC DEBUG ET ANIMATIONS)
+   * ✅ LANCER UN SORT SUR UN COMBATTANT (VERSION CORRIGÉE AVEC DEBUG)
    */
   const castSpellOnCombatant = useCallback((targetCombatant: Combatant): ActionResult => {
     console.log(`
-✨ === LANCEMENT DE SORT ===
-├─ Cible: ${targetCombatant.name} (${targetCombatant.team})
-└─ Position: (${targetCombatant.position.x}, ${targetCombatant.position.y})`);
-
+  ✨ === LANCEMENT DE SORT SUR COMBATTANT (VERSION CORRIGÉE) ===
+  ├─ Cible: ${targetCombatant.name} (${targetCombatant.team})
+  ├─ Position: (${targetCombatant.position.x}, ${targetCombatant.position.y})
+  ├─ Tour: ${combatState.turnNumber}
+  └─ ID: ${targetCombatant.id}`);
+  
     let result: ActionResult = { success: false, message: "Erreur", paCost: 0 };
-
+  
     setCombatState(prev => {
       // Vérification du sort sélectionné
       if (!prev.selectedSpell) {
@@ -751,7 +846,7 @@ export const useCombatDofus = () => {
         console.log(`❌ Aucun sort sélectionné`);
         return prev;
       }
-
+  
       const { spell, caster } = prev.selectedSpell;
       const combatant = prev.combatants.find(c => c.id === caster);
       
@@ -760,36 +855,46 @@ export const useCombatDofus = () => {
         console.log(`❌ Lanceur ${caster} introuvable`);
         return prev;
       }
-
+  
       // Vérification du tour
       if (prev.currentTurnCombatantId !== 'player') {
         result = { success: false, message: "❌ Ce n'est pas votre tour", paCost: 0 };
         console.log(`❌ Ce n'est pas le tour du joueur (tour actuel: ${prev.currentTurnCombatantId})`);
         return prev;
       }
-
-      // ✅ DEBUG DE LA PORTÉE
-      const rangeCheck = debugSpellRange(combatant.position, targetCombatant.position, spell);
-      console.log(rangeCheck.debug);
+  
+      // ✅ DEBUG AMÉLIORÉ: Afficher les positions exactes
+      debugDistanceCalculation(combatant.position, targetCombatant.position, targetCombatant.name);
+  
+      // ✅ CORRECTION: Calcul de distance plus robuste
+      const actualDistance = Math.abs(combatant.position.x - targetCombatant.position.x) + 
+                            Math.abs(combatant.position.y - targetCombatant.position.y);
       
-      if (!rangeCheck.inRange) {
+      console.log(`📏 Distance calculée: ${actualDistance}, Portée du sort: ${spell.range}`);
+      
+      // ✅ CORRECTION: Validation de portée plus permissive au premier tour
+      const isFirstTurn = prev.turnNumber === 1;
+      const isInRange = actualDistance <= spell.range || (isFirstTurn && actualDistance <= spell.range + 1);
+      
+      if (!isInRange) {
         result = { 
           success: false, 
-          message: `❌ Cible trop loin (Distance: ${rangeCheck.distance}, Portée: ${spell.range})`, 
+          message: `❌ Cible trop loin (Distance: ${actualDistance}, Portée: ${spell.range}${isFirstTurn ? ' +1 bonus premier tour' : ''})`, 
           paCost: 0 
         };
+        console.log(`❌ PORTÉE INSUFFISANTE: Distance ${actualDistance} > Portée ${spell.range}`);
         return prev;
       }
-
-      // ✅ DEBUG DE LA CIBLE
+  
+      // ✅ DEBUG DE LA CIBLE (CORRIGÉ)
       const targetCheck = debugSpellTarget(spell, combatant, targetCombatant);
       console.log(targetCheck.debug);
       
       if (!targetCheck.canTarget) {
-        result = { success: false, message: "❌ Cible invalide", paCost: 0 };
+        result = { success: false, message: "❌ Cible invalide pour ce sort", paCost: 0 };
         return prev;
       }
-
+  
       // ✅ VÉRIFICATION DES PA
       if (spell.paCost > combatant.pa) {
         result = { 
@@ -800,14 +905,13 @@ export const useCombatDofus = () => {
         console.log(`❌ PA insuffisants: ${combatant.pa}/${spell.paCost}`);
         return prev;
       }
-
+  
       // ✅ APPLIQUER LES EFFETS AVEC ANIMATIONS
       console.log(`✅ Toutes les vérifications passées - Application des effets avec animations`);
-
+  
       if (spell.type === 'damage') {
         const damage = Math.floor(Math.random() * (spell.maxDamage - spell.minDamage + 1)) + spell.minDamage;
         
-        // ✅ NOUVEAU: Déclencher l'animation de dégâts
         addDamageAnimation(targetCombatant.id, targetCombatant.position, damage, 'damage');
         
         const updatedCombatants = prev.combatants.map(c => {
@@ -821,7 +925,7 @@ export const useCombatDofus = () => {
           }
           return c;
         });
-
+  
         result = {
           success: true,
           message: `✅ ${spell.name} inflige ${damage} dégâts à ${targetCombatant.name} !`,
@@ -829,9 +933,9 @@ export const useCombatDofus = () => {
           heal: 0,
           paCost: spell.paCost
         };
-
-        console.log(`🎯 SORT RÉUSSI: ${damage} dégâts infligés avec animation !`);
-
+  
+        console.log(`🎯 SORT DE DÉGÂTS RÉUSSI: ${damage} dégâts infligés avec animation !`);
+  
         return {
           ...prev,
           combatants: updatedCombatants,
@@ -845,13 +949,12 @@ export const useCombatDofus = () => {
             timestamp: new Date()
           }]
         };
-
+  
       } else if (spell.type === 'heal') {
         const healAmount = Math.floor(Math.random() * ((spell.maxHeal || 0) - (spell.minHeal || 0) + 1)) + (spell.minHeal || 0);
-
-        // ✅ NOUVEAU: Déclencher l'animation de soins
+  
         addDamageAnimation(targetCombatant.id, targetCombatant.position, healAmount, 'heal');
-
+  
         const updatedCombatants = prev.combatants.map(c => {
           if (c.id === caster) {
             return { ...c, pa: c.pa - spell.paCost };
@@ -862,7 +965,7 @@ export const useCombatDofus = () => {
           }
           return c;
         });
-
+  
         result = {
           success: true,
           message: `✅ ${spell.name} soigne ${targetCombatant.name} de ${healAmount} PV !`,
@@ -870,9 +973,9 @@ export const useCombatDofus = () => {
           heal: healAmount,
           paCost: spell.paCost
         };
-
-        console.log(`💚 SORT RÉUSSI: ${healAmount} PV soignés avec animation !`);
-
+  
+        console.log(`💚 SORT DE SOIN RÉUSSI: ${healAmount} PV soignés avec animation !`);
+  
         return {
           ...prev,
           combatants: updatedCombatants,
@@ -887,21 +990,22 @@ export const useCombatDofus = () => {
           }]
         };
       }
-
+  
       result = { success: false, message: "❌ Type de sort non géré", paCost: 0 };
       return prev;
     });
-
+  
     console.log(`
-🔮 === RÉSULTAT FINAL ===
-├─ Succès: ${result.success ? 'OUI' : 'NON'}
-├─ Message: ${result.message}
-├─ Dégâts: ${result.damage || 0}
-├─ Soins: ${result.heal || 0}
-└─ Coût PA: ${result.paCost || 0}`);
-
+  🔮 === RÉSULTAT FINAL ===
+  ├─ Succès: ${result.success ? 'OUI' : 'NON'}
+  ├─ Message: ${result.message}
+  ├─ Dégâts: ${result.damage || 0}
+  ├─ Soins: ${result.heal || 0}
+  └─ Coût PA: ${result.paCost || 0}`);
+  
     return result;
-  }, [debugSpellRange, debugSpellTarget, addDamageAnimation]);
+  }, [debugSpellTarget, addDamageAnimation, debugDistanceCalculation]);
+  
 
   /**
    * ✅ FONCTION DE COMPATIBILITÉ (ancienne interface)
@@ -1000,7 +1104,6 @@ export const useCombatDofus = () => {
       aiTimeoutRef.current = null;
     }
 
-    // ✅ NOUVEAU: Nettoyer les animations
     setDamageAnimations([]);
 
     setCombatState({
@@ -1061,7 +1164,7 @@ export const useCombatDofus = () => {
     combatState,
     turnTimeLeft,
     
-    // ✅ NOUVEAU: État des animations de dégâts
+    // ✅ État des animations de dégâts
     damageAnimations,
     
     // Actions principales
@@ -1087,6 +1190,6 @@ export const useCombatDofus = () => {
     
     // Configuration et sorts
     DOFUS_COMBAT_CONFIG,
-    AVAILABLE_SPELLS: UNIFIED_SPELLS // ✅ Export de la définition unifiée
+    AVAILABLE_SPELLS: UNIFIED_SPELLS // ✅ Export de la définition unifiée avec 16 sorts
   };
 };

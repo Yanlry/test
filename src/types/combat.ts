@@ -142,3 +142,23 @@ export interface CombatTile {
   isOccupied: boolean; // Y a-t-il un combattant dessus ?
   occupiedBy?: string; // ID du combattant qui occupe la case
 }
+
+// ✅ Interface unifiée pour les animations de dégâts/soins
+export interface DamageAnimation {
+  /** Identifiant unique de l'animation */
+  id: string;
+  /** ID du combattant ciblé */
+  targetId: string;
+  /** Position sur la grille de jeu */
+  gridPosition: Position;
+  /** Position calculée à l'écran (pour optimisation) */
+  screenPosition: { x: number; y: number };
+  /** Montant des dégâts ou soins */
+  damage: number;
+  /** Type d'animation */
+  type: 'damage' | 'heal';
+  /** Timestamp de création */
+  timestamp: number;
+  /** Durée de l'animation en millisecondes */
+  duration: number;
+}

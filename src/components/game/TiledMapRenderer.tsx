@@ -4,25 +4,15 @@
  * ✅ SIMPLE: Clic sur joueur = sort de soin, clic sur ennemi = sort d'attaque
  * ✅ MARCHE: Avec la nouvelle fonction handleCombatantClick du GameMap
  * ✅ NOUVEAU: Animations "💥 -124" et "💚 +45" qui apparaissent et montent
+ * ✅ CORRIGÉ: Import du type DamageAnimation depuis combat.ts
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { TiledMap, TiledLayer, ParsedTileset } from '../../types/tiled';
 import { loadTiledMap, loadTileset } from '../../utils/tiledLoader';
 import { Position } from '../../types/game';
-import { Monster, CombatState, Combatant } from '../../types/combat';
+import { Monster, CombatState, Combatant, DamageAnimation } from '../../types/combat';
 import MonsterComponent from './Monster';
-
-// ✅ NOUVEAU: Interface pour les animations de dégâts
-interface DamageAnimation {
-  id: string;
-  targetId: string;
-  position: Position;
-  damage: number;
-  type: 'damage' | 'heal';
-  timestamp: number;
-  duration: number;
-}
 
 interface TiledMapRendererProps {
   mapPath: string;
@@ -44,7 +34,7 @@ interface TiledMapRendererProps {
   // Prop pour cliquer sur les combattants
   onCombatantClick?: (combatant: Combatant) => void;
   
-  // ✅ NOUVEAU: Prop pour les animations de dégâts
+  // ✅ CORRIGÉ: Import du type DamageAnimation depuis combat.ts
   damageAnimations?: DamageAnimation[];
 }
 
@@ -65,7 +55,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
   combatState,
   // Fonction pour cliquer sur les combattants
   onCombatantClick,
-  // ✅ NOUVEAU: Animations de dégâts
+  // ✅ CORRIGÉ: Animations de dégâts avec type unifié
   damageAnimations = []
 }) => {
   // États pour les données Tiled
@@ -353,21 +343,21 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
     return null;
   }, [combatState]);
 
-  // ✅ NOUVEAU: Fonction pour rendre les animations de dégâts
+  // ✅ CORRIGÉ: Fonction pour rendre les animations de dégâts FIXES
   const renderDamageAnimations = (): React.ReactNode[] => {
     if (!damageAnimations || damageAnimations.length === 0) return [];
     
     return damageAnimations.map((animation) => {
-      const renderPosition = getTileRenderPosition(animation.position.x, animation.position.y);
+      // ✅ CORRIGÉ: Utiliser gridPosition au lieu de position
+      const renderPosition = getTileRenderPosition(animation.gridPosition.x, animation.gridPosition.y);
       
       // Calculer l'âge de l'animation (de 0 à 1)
       const age = (Date.now() - animation.timestamp) / animation.duration;
       const progress = Math.min(age, 1);
       
-      // Animation : monte et devient transparente
-      const yOffset = -progress * 60; // Monte de 60px
-      const opacity = 1 - progress; // Devient transparente
-      const scale = 1 + progress * 0.5; // Grossit légèrement
+      // Animation FIXE : juste disparition en fondu + léger grossissement
+      const opacity = Math.max(0, 1 - progress); // Devient transparente progressivement
+      const scale = 1 + progress * 0.3; // Grossit très légèrement (30% max)
       
       // Couleurs selon le type
       const isHeal = animation.type === 'heal';
@@ -379,22 +369,25 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
       return (
         <div
           key={animation.id}
-          className="absolute pointer-events-none z-[3000] font-bold"
+          className="absolute pointer-events-none z-[3000] font-bold select-none"
           style={{
             left: renderPosition.x + DISPLAY_TILE_WIDTH / 2,
-            top: renderPosition.y + DISPLAY_TILE_HEIGHT / 2 + yOffset,
+            top: renderPosition.y + DISPLAY_TILE_HEIGHT / 2, // Position FIXE - pas de yOffset
             transform: `translate(-50%, -50%) scale(${scale})`,
             opacity: opacity,
             color: textColor,
-            textShadow: `2px 2px 4px ${shadowColor}, 0 0 8px ${shadowColor}`,
-            fontSize: '24px',
-            fontWeight: 'bold',
-            zIndex: 3000 + animation.position.y * 100 + animation.position.x
+            textShadow: `3px 3px 6px ${shadowColor}, 0 0 12px ${shadowColor}, 0 0 18px ${shadowColor}`,
+            fontSize: '28px', // Un peu plus grand pour être bien visible
+            fontWeight: '900', // Plus gras
+            zIndex: 3000 + animation.gridPosition.y * 100 + animation.gridPosition.x,
+            // Assurer que le texte reste net
+            WebkitFontSmoothing: 'antialiased',
+            textRendering: 'optimizeLegibility'
           }}
         >
-          <div className="flex items-center space-x-1">
-            <span>{emoji}</span>
-            <span>{sign}{animation.damage}</span>
+          <div className="flex items-center justify-center space-x-1 bg-black/40 px-3 py-1 rounded-lg border border-white/20 backdrop-blur-sm">
+            <span className="text-2xl">{emoji}</span>
+            <span className="font-mono font-black tracking-wider">{sign}{animation.damage}</span>
           </div>
         </div>
       );
@@ -1026,7 +1019,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
     );
   }
 
-  // ✅ AFFICHAGE FINAL AVEC COMBATTANTS CLIQUABLES ET ANIMATIONS DE DÉGÂTS
+  // ✅ AFFICHAGE FINAL AVEC COMBATTANTS CLIQUABLES ET ANIMATIONS DE DÉGÂTS CORRIGÉES
   return (
     <div 
       ref={mapContainerRef}
@@ -1066,7 +1059,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
         {renderEntities()}
       </div>
 
-      {/* ✅ NOUVEAU: Rendu des animations de dégâts */}
+      {/* ✅ CORRIGÉ: Rendu des animations de dégâts avec gridPosition */}
       <div className="absolute inset-0">
         {renderDamageAnimations()}
       </div>
@@ -1079,7 +1072,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
           <div>Phase: {combatState.phase}</div>
           <div>Joueur: ({playerPosition.x}, {playerPosition.y})</div>
           
-          {/* ✅ NOUVEAU: Info des animations */}
+          {/* ✅ CORRIGÉ: Info des animations avec gridPosition */}
           {damageAnimations.length > 0 && (
             <div className="text-orange-400">
               💥 Animations: {damageAnimations.length}

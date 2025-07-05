@@ -1,11 +1,12 @@
 /**
- * HOOK DE DÉPLACEMENT CORRIGÉ - AVANCE TOUJOURS VERS L'OBSTACLE
- * ✅ NOUVEAU: Le personnage avance toujours vers la destination, même bloquée
- * ✅ CORRIGÉ: Calcule le chemin jusqu'au point le plus proche de l'obstacle
- * ✅ AMÉLIORATION: Meilleure gestion des destinations inaccessibles
+ * HOOK DE DÉPLACEMENT CORRIGÉ - COMPATIBLE COMBAT
+ * ✅ CORRIGÉ: isMoving se remet correctement à false après déplacement
+ * ✅ CORRIGÉ: États de mouvement complètement nettoyés
+ * ✅ NOUVEAU: Fonctions de debug pour diagnostiquer les blocages
+ * ✅ NOUVEAU: Force la réinitialisation en cas de problème
  */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Position, MapType } from '../types/game';
 import { 
   MAP_WIDTH,
@@ -42,6 +43,44 @@ export const useGameMovement = (avoidanceConfig: ObstacleAvoidanceConfig = DEFAU
   // État pour stocker la fonction de praticabilité de Tiled
   const [tiledWalkableFunction, setTiledWalkableFunction] = useState<((x: number, y: number) => boolean) | null>(null);
 
+  // ✅ NOUVEAU: Référence pour le timer de mouvement
+  const moveTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  /**
+   * ✅ NOUVELLE FONCTION: Nettoie complètement l'état de mouvement
+   */
+  const resetMovementState = useCallback(() => {
+    console.log('🧹 === NETTOYAGE COMPLET DE L\'ÉTAT DE MOUVEMENT ===');
+    
+    // Nettoyer le timer
+    if (moveTimerRef.current) {
+      clearTimeout(moveTimerRef.current);
+      moveTimerRef.current = null;
+    }
+    
+    // Réinitialiser tous les états
+    setIsMoving(false);
+    setTargetPosition(null);
+    setCurrentPath([]);
+    setCurrentPathIndex(0);
+    
+    console.log('✅ État de mouvement nettoyé - Combat autorisé');
+  }, []);
+
+  /**
+   * ✅ NOUVELLE FONCTION: Debug de l'état actuel
+   */
+  const debugMovementState = useCallback(() => {
+    console.log(`
+🔍 === DEBUG ÉTAT DE MOUVEMENT ===
+├─ isMoving: ${isMoving}
+├─ targetPosition: ${targetPosition ? `(${targetPosition.x}, ${targetPosition.y})` : 'null'}
+├─ currentPath.length: ${currentPath.length}
+├─ currentPathIndex: ${currentPathIndex}
+├─ playerPosition: (${playerPosition.x}, ${playerPosition.y})
+└─ Timer actif: ${moveTimerRef.current ? 'OUI' : 'NON'}`);
+  }, [isMoving, targetPosition, currentPath.length, currentPathIndex, playerPosition]);
+
   /**
    * Fonction pour recevoir les données de praticabilité de Tiled
    */
@@ -77,8 +116,7 @@ export const useGameMovement = (avoidanceConfig: ObstacleAvoidanceConfig = DEFAU
   }, [isValidPosition]);
 
   /**
-   * ✅ NOUVELLE FONCTION: Trouve la case la plus proche VERS une destination
-   * Différent de findClosestWalkablePosition - cherche dans la direction de la cible
+   * ✅ FONCTION: Trouve la case la plus proche VERS une destination
    */
   const findBestReachableTarget = useCallback((targetX: number, targetY: number): Position | null => {
     console.log(`🎯 Recherche de la meilleure destination vers (${targetX}, ${targetY})...`);
@@ -89,8 +127,7 @@ export const useGameMovement = (avoidanceConfig: ObstacleAvoidanceConfig = DEFAU
       return { x: targetX, y: targetY };
     }
 
-    // ✅ NOUVEAU: Algorithme de recherche directionnel
-    // Au lieu de chercher en spirale, on cherche en ligne droite vers la cible
+    // Algorithme de recherche directionnel
     const dx = targetX - playerPosition.x;
     const dy = targetY - playerPosition.y;
     const distance = Math.abs(dx) + Math.abs(dy);
@@ -99,14 +136,8 @@ export const useGameMovement = (avoidanceConfig: ObstacleAvoidanceConfig = DEFAU
       return null; // Déjà sur place
     }
 
-    // Normaliser la direction
-    const stepX = dx === 0 ? 0 : dx > 0 ? 1 : -1;
-    const stepY = dy === 0 ? 0 : dy > 0 ? 1 : -1;
-    
     // Chercher en avançant vers la cible
     let bestPosition: Position | null = null;
-    let currentX = playerPosition.x;
-    let currentY = playerPosition.y;
     
     // Avancer vers la cible case par case
     for (let step = 1; step <= distance; step++) {
@@ -136,31 +167,27 @@ export const useGameMovement = (avoidanceConfig: ObstacleAvoidanceConfig = DEFAU
   }, [isValidPosition, playerPosition]);
 
   /**
-   * ✅ FONCTION DE FALLBACK: Recherche en spirale (ancienne méthode)
+   * FONCTION DE FALLBACK: Recherche en spirale
    */
   const findClosestWalkablePositionSpiral = useCallback((targetX: number, targetY: number): Position | null => {
     console.log(`🌀 Recherche en spirale autour de (${targetX}, ${targetY})...`);
 
-    // Recherche en spirale pour trouver la case praticable la plus proche
     let bestDistance = Infinity;
     let bestPosition: Position | null = null;
 
     // Recherche dans un rayon croissant
-    for (let radius = 1; radius <= 3; radius++) { // Limité à rayon 3 pour performance
+    for (let radius = 1; radius <= 3; radius++) {
       for (let dx = -radius; dx <= radius; dx++) {
         for (let dy = -radius; dy <= radius; dy++) {
-          // Ne vérifier que les cases à la distance exacte du rayon actuel
           if (Math.abs(dx) !== radius && Math.abs(dy) !== radius) continue;
 
           const checkX = targetX + dx;
           const checkY = targetY + dy;
 
-          // Vérifier si cette position est praticable
           if (isValidPosition(checkX, checkY)) {
-            // Calculer la distance depuis la position du joueur
             const distanceFromPlayer = Math.abs(checkX - playerPosition.x) + Math.abs(checkY - playerPosition.y);
             
-            if (distanceFromPlayer < bestDistance && distanceFromPlayer > 0) { // > 0 pour éviter la position actuelle
+            if (distanceFromPlayer < bestDistance && distanceFromPlayer > 0) {
               bestDistance = distanceFromPlayer;
               bestPosition = { x: checkX, y: checkY };
             }
@@ -168,9 +195,7 @@ export const useGameMovement = (avoidanceConfig: ObstacleAvoidanceConfig = DEFAU
         }
       }
 
-      // Si on a trouvé une position praticable, la retourner
       if (bestPosition) {
-
         return bestPosition;
       }
     }
@@ -188,7 +213,7 @@ export const useGameMovement = (avoidanceConfig: ObstacleAvoidanceConfig = DEFAU
     
     for (let dx = -radius; dx <= radius; dx++) {
       for (let dy = -radius; dy <= radius; dy++) {
-        if (dx === 0 && dy === 0) continue; // Ignorer la case centrale
+        if (dx === 0 && dy === 0) continue;
         
         if (isPositionBlocked(x + dx, y + dy)) {
           obstacleCount++;
@@ -200,14 +225,13 @@ export const useGameMovement = (avoidanceConfig: ObstacleAvoidanceConfig = DEFAU
   }, [avoidanceConfig.checkRadius, isPositionBlocked]);
 
   /**
-   * ✅ ALGORITHME A* AMÉLIORÉ: Trouve toujours un chemin vers la meilleure destination
+   * ALGORITHME A* AMÉLIORÉ
    */
   const findPathForIsometricMap = useCallback((start: Position, requestedGoal: Position): Position[] => {
-    console.log(`🧭 === CALCUL DE CHEMIN A* INTELLIGENT ===`);
+    console.log(`🧭 === CALCUL DE CHEMIN A* ===`);
     console.log(`📍 Départ: (${start.x}, ${start.y})`);
     console.log(`🎯 Destination demandée: (${requestedGoal.x}, ${requestedGoal.y})`);
     
-    // ✅ NOUVEAU: Trouve la meilleure destination accessible dans la direction de la cible
     const actualGoal = findBestReachableTarget(requestedGoal.x, requestedGoal.y);
     
     if (!actualGoal) {
@@ -225,24 +249,22 @@ export const useGameMovement = (avoidanceConfig: ObstacleAvoidanceConfig = DEFAU
     interface AStarNode {
       x: number;
       y: number;
-      g: number;      // Coût depuis le début
-      h: number;      // Heuristique vers la fin
-      f: number;      // Coût total (g + h)
+      g: number;
+      h: number;
+      f: number;
       parent: AStarNode | null;
     }
 
-    // Fonction heuristique (distance de Manhattan)
     const heuristic = (a: Position, b: Position): number => {
       return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
     };
 
-    // Calculer le coût d'une case avec pénalité pour proximité des obstacles
     const getCostForTile = (x: number, y: number): number => {
       if (isPositionBlocked(x, y)) {
-        return Infinity; // Case bloquée
+        return Infinity;
       }
       
-      let cost = 1.0; // Coût de base
+      let cost = 1.0;
       
       if (avoidanceConfig.enabled) {
         const adjacentObstacles = countAdjacentObstacles(x, y);
@@ -271,7 +293,6 @@ export const useGameMovement = (avoidanceConfig: ObstacleAvoidanceConfig = DEFAU
     openSet.push(startNode);
     
     while (openSet.length > 0) {
-      // Trouver le nœud avec le plus petit f
       let currentIndex = 0;
       for (let i = 1; i < openSet.length; i++) {
         if (openSet[i].f < openSet[currentIndex].f) {
@@ -283,7 +304,6 @@ export const useGameMovement = (avoidanceConfig: ObstacleAvoidanceConfig = DEFAU
       const currentKey = `${current.x},${current.y}`;
       closedSet.add(currentKey);
       
-      // Vérifier si on a atteint le but
       if (current.x === actualGoal.x && current.y === actualGoal.y) {
         const path: Position[] = [];
         let node: AStarNode | null = current;
@@ -294,16 +314,11 @@ export const useGameMovement = (avoidanceConfig: ObstacleAvoidanceConfig = DEFAU
         }
         
         console.log(`✅ Chemin trouvé: ${path.length} cases`);
-        console.log(`🛤️ Chemin complet:`, path);
         return path;
       }
       
-      // Examiner les 4 directions principales
       const neighbors = [
-        [0, -1], // Haut
-        [1, 0],  // Droite
-        [0, 1],  // Bas
-        [-1, 0]  // Gauche
+        [0, -1], [1, 0], [0, 1], [-1, 0]
       ];
       
       for (const [dx, dy] of neighbors) {
@@ -317,12 +332,11 @@ export const useGameMovement = (avoidanceConfig: ObstacleAvoidanceConfig = DEFAU
         
         const tileCost = getCostForTile(neighborX, neighborY);
         if (tileCost === Infinity) {
-          continue; // Case bloquée
+          continue;
         }
         
         const tentativeG = current.g + tileCost;
         
-        // Vérifier si ce voisin est déjà dans l'open set
         let existingNode = openSet.find(node => node.x === neighborX && node.y === neighborY);
         
         if (!existingNode) {
@@ -356,29 +370,28 @@ export const useGameMovement = (avoidanceConfig: ObstacleAvoidanceConfig = DEFAU
 
   // Fonction pour changer de map
   const changeMap = useCallback((newMap: MapType, newPosition?: Position) => {
+    // ✅ CORRIGÉ: Nettoyer l'état de mouvement lors du changement de map
+    resetMovementState();
+    
     setCurrentMap(newMap);
     if (newPosition) {
       setPlayerPosition(newPosition);
     }
     
-    // Arrêter le mouvement
-    setIsMoving(false);
-    setTargetPosition(null);
-    setCurrentPath([]);
-    setCurrentPathIndex(0);
-    
     console.log(`📍 Téléportation vers: ${newMap === 'world' ? 'Monde principal' : 'Nouvelle zone'}`);
-  }, []);
+  }, [resetMovementState]);
 
   /**
-   * ✅ FONCTION DE DÉPLACEMENT AMÉLIORÉE: Force toujours un mouvement
+   * ✅ FONCTION DE DÉPLACEMENT CORRIGÉE
    */
   const moveToPosition = useCallback((target: Position) => {
-    console.log(`🚀 === DEMANDE DE DÉPLACEMENT VERS OBSTACLE ===`);
+    console.log(`🚀 === DEMANDE DE DÉPLACEMENT ===`);
     console.log(`📍 Position actuelle: (${playerPosition.x}, ${playerPosition.y})`);
     console.log(`🎯 Destination demandée: (${target.x}, ${target.y})`);
     
-    // ✅ NOUVEAU: Calcule toujours un chemin, même vers une destination bloquée
+    // ✅ NOUVEAU: Force le nettoyage avant nouveau mouvement
+    resetMovementState();
+    
     const path = findPathForIsometricMap(playerPosition, target);
     
     if (path.length === 0) {
@@ -386,7 +399,6 @@ export const useGameMovement = (avoidanceConfig: ObstacleAvoidanceConfig = DEFAU
       return false;
     }
     
-    // La vraie destination sera la dernière case du chemin calculé
     const actualTarget = path[path.length - 1];
     
     setTargetPosition(actualTarget);
@@ -397,21 +409,23 @@ export const useGameMovement = (avoidanceConfig: ObstacleAvoidanceConfig = DEFAU
     console.log(`✅ Mouvement lancé: ${path.length} cases à parcourir`);
     console.log(`🎯 Destination finale: (${actualTarget.x}, ${actualTarget.y})`);
     
-    // ✅ NOUVEAU: Indique si on va exactement où demandé ou près de l'obstacle
     if (actualTarget.x !== target.x || actualTarget.y !== target.y) {
       console.log(`🚧 Obstacle détecté - Arrêt prévu devant l'obstacle en (${actualTarget.x}, ${actualTarget.y})`);
     }
     
     return true;
-  }, [playerPosition, findPathForIsometricMap]);
+  }, [playerPosition, findPathForIsometricMap, resetMovementState]);
 
   /**
-   * ✅ GESTION DU CLIC AMÉLIORÉE: Force toujours un mouvement vers l'obstacle
+   * ✅ GESTION DU CLIC CORRIGÉE
    */
   const handleTileClick = useCallback((x: number, y: number) => {
-    console.log(`🎯 === GESTION DU CLIC VERS OBSTACLE ===`);
+    console.log(`🎯 === GESTION DU CLIC ===`);
     console.log(`📍 Case cliquée: (${x}, ${y})`);
     console.log(`🏃 Position actuelle du joueur: (${playerPosition.x}, ${playerPosition.y})`);
+    
+    // Debug de l'état avant clic
+    debugMovementState();
     
     // Ne rien faire si on clique sur la position actuelle
     if (x === playerPosition.x && y === playerPosition.y) {
@@ -419,8 +433,7 @@ export const useGameMovement = (avoidanceConfig: ObstacleAvoidanceConfig = DEFAU
       return;
     }
     
-    // ✅ NOUVEAU: Force TOUJOURS un mouvement, même vers des obstacles
-    console.log(`✅ Clic accepté - calcul du chemin vers l'obstacle...`);
+    console.log(`✅ Clic accepté - calcul du chemin...`);
     const moveSuccess = moveToPosition({ x, y });
     
     if (moveSuccess) {
@@ -428,69 +441,84 @@ export const useGameMovement = (avoidanceConfig: ObstacleAvoidanceConfig = DEFAU
     } else {
       console.log(`❌ Impossible de se déplacer vers (${x}, ${y})`);
     }
-  }, [playerPosition, moveToPosition]);
+  }, [playerPosition, moveToPosition, debugMovementState]);
 
-  // Effect pour gérer l'animation du mouvement (INCHANGÉ)
+  // ✅ EFFET DE MOUVEMENT CORRIGÉ AVEC NETTOYAGE FORCÉ
   useEffect(() => {
-    if (!isMoving || currentPath.length === 0) return;
+    if (!isMoving || currentPath.length === 0) {
+      // ✅ NOUVEAU: S'assurer que l'état est clean quand pas en mouvement
+      if (moveTimerRef.current) {
+        clearTimeout(moveTimerRef.current);
+        moveTimerRef.current = null;
+      }
+      return;
+    }
 
     const moveStep = () => {
-      // Vérifier si on a atteint la fin du chemin
+      // ✅ CORRIGÉ: Vérification plus robuste de fin de chemin
       if (currentPathIndex >= currentPath.length) {
-        setIsMoving(false);
-        setTargetPosition(null);
-        setCurrentPath([]);
-        setCurrentPathIndex(0);
+        console.log('🏁 === FIN DU MOUVEMENT ===');
+        console.log(`📍 Position finale: (${playerPosition.x}, ${playerPosition.y})`);
         
-        // Vérifier si on est arrivé sur un portail
+        // ✅ CORRIGÉ: Nettoyage complet et forcé
+        resetMovementState();
+        
+        // Vérifier téléportation après nettoyage
         if (isTeleportPosition(playerPosition.x, playerPosition.y)) {
           setTimeout(() => {
             if (currentMap === 'world' && 
                 playerPosition.x === TELEPORT_POSITIONS.WORLD_TO_NEW.x && 
                 playerPosition.y === TELEPORT_POSITIONS.WORLD_TO_NEW.y) {
-              // Téléportation vers la nouvelle map
               changeMap('new', TELEPORT_POSITIONS.NEW_SPAWN_FROM_WORLD);
             } else if (currentMap === 'new' && 
                        playerPosition.x === TELEPORT_POSITIONS.NEW_TO_WORLD.x && 
                        playerPosition.y === TELEPORT_POSITIONS.NEW_TO_WORLD.y) {
-              // Retour vers la map principale
               changeMap('world', TELEPORT_POSITIONS.WORLD_SPAWN_FROM_NEW);
             }
           }, 500);
         }
         
+        console.log('✅ États nettoyés - Combat autorisé');
         return;
       }
       
       // Passer à la case suivante du chemin
       const nextPosition = currentPath[currentPathIndex];
+      console.log(`👣 Mouvement: étape ${currentPathIndex + 1}/${currentPath.length} vers (${nextPosition.x}, ${nextPosition.y})`);
+      
       setPlayerPosition(nextPosition);
       setCurrentPathIndex(prev => prev + 1);
     };
 
-    // Timer pour le mouvement
-    const moveTimer = setTimeout(moveStep, MOVEMENT_SPEED);
+    // ✅ CORRIGÉ: Stocker la référence du timer
+    moveTimerRef.current = setTimeout(moveStep, MOVEMENT_SPEED);
     
-    return () => clearTimeout(moveTimer);
-  }, [currentPathIndex, currentPath, isMoving, playerPosition, currentMap, isTeleportPosition, changeMap]);
+    return () => {
+      if (moveTimerRef.current) {
+        clearTimeout(moveTimerRef.current);
+        moveTimerRef.current = null;
+      }
+    };
+  }, [currentPathIndex, currentPath, isMoving, playerPosition, currentMap, isTeleportPosition, changeMap, resetMovementState]);
 
-  // Fonction pour arrêter le mouvement
+  // ✅ FONCTION D'ARRÊT CORRIGÉE
   const stopMovement = useCallback(() => {
-    setIsMoving(false);
-    setTargetPosition(null);
-    setCurrentPath([]);
-    setCurrentPathIndex(0);
-  }, []);
+    console.log('🛑 === ARRÊT FORCÉ DU MOUVEMENT ===');
+    resetMovementState();
+  }, [resetMovementState]);
 
   // Fonction pour téléporter directement
   const teleportTo = useCallback((position: Position, map?: MapType) => {
-    stopMovement();
+    console.log('⚡ === TÉLÉPORTATION ===');
+    resetMovementState(); // ✅ CORRIGÉ: Nettoyer avant téléportation
+    
     setPlayerPosition(position);
     if (map && map !== currentMap) {
       setCurrentMap(map);
     }
+    
     console.log(`⚡ Téléportation vers (${position.x}, ${position.y}) sur ${map || currentMap}`);
-  }, [currentMap, stopMovement]);
+  }, [currentMap, resetMovementState]);
 
   // Fonction pour obtenir les informations de la map actuelle
   const getCurrentMapInfo = useCallback(() => {
@@ -504,6 +532,16 @@ export const useGameMovement = (avoidanceConfig: ObstacleAvoidanceConfig = DEFAU
       isIsometric: true
     };
   }, [currentMap, playerPosition, isMoving, currentPath.length, currentPathIndex]);
+
+  // ✅ NOUVEAU: Effet de nettoyage au démontage
+  useEffect(() => {
+    return () => {
+      if (moveTimerRef.current) {
+        clearTimeout(moveTimerRef.current);
+        moveTimerRef.current = null;
+      }
+    };
+  }, []);
 
   return {
     // États
@@ -520,6 +558,10 @@ export const useGameMovement = (avoidanceConfig: ObstacleAvoidanceConfig = DEFAU
     changeMap,
     stopMovement,
     teleportTo,
+    
+    // ✅ NOUVELLES FONCTIONS DE DEBUG
+    resetMovementState,
+    debugMovementState,
     
     // Fonction pour recevoir les données de praticabilité
     setWalkableFunction,

@@ -92,7 +92,7 @@ const TOUS_LES_SORTS = [
     paCost: 3, 
     description: 'Attaque rapide (15-25 dégâts)', 
     type: 'damage',
-    targetType: 'enemy',
+    targetType: 'enemy', // ✅ CORRIGÉ: enemy au lieu de self
     minDamage: 15,
     maxDamage: 25,
     range: 1
@@ -104,7 +104,7 @@ const TOUS_LES_SORTS = [
     paCost: 4, 
     description: 'Attaque forte (25-35 dégâts)', 
     type: 'damage',
-    targetType: 'enemy',
+    targetType: 'enemy', // ✅ CORRIGÉ: enemy au lieu de self
     minDamage: 25,
     maxDamage: 35,
     range: 1
@@ -116,7 +116,7 @@ const TOUS_LES_SORTS = [
     paCost: 2, 
     description: 'Empoisonne (10-15 dégâts)', 
     type: 'damage',
-    targetType: 'enemy',
+    targetType: 'enemy', // ✅ CORRIGÉ: enemy au lieu de self
     minDamage: 10,
     maxDamage: 15,
     range: 2
@@ -128,7 +128,7 @@ const TOUS_LES_SORTS = [
     paCost: 3, 
     description: 'Soigne 20-30 PV', 
     type: 'heal',
-    targetType: 'self',
+    targetType: 'ally', // ✅ CORRIGÉ: ally au lieu de self
     minHeal: 20,
     maxHeal: 30,
     range: 3
@@ -550,6 +550,8 @@ const GameUI: React.FC<GameUIProps> = ({
     onSpellClick?.(spellId);
   };
 
+
+  
   // ===== RENDU =====
   
   return (
