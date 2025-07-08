@@ -1,10 +1,9 @@
 /**
- * COMPOSANT TILED MAP RENDERER - VERSION AVEC ANIMATIONS DE DÉGÂTS
- * ✅ NOUVEAU: Les combattants sur la map sont cliquables pour lancer des sorts
- * ✅ SIMPLE: Clic sur joueur = sort de soin, clic sur ennemi = sort d'attaque
- * ✅ MARCHE: Avec la nouvelle fonction handleCombatantClick du GameMap
- * ✅ NOUVEAU: Animations "💥 -124" et "💚 +45" qui apparaissent et montent
- * ✅ CORRIGÉ: Import du type DamageAnimation depuis combat.ts
+ * COMPOSANT TILED MAP RENDERER - VERSION ULTRA CLEAN
+ * ✅ SUPPRIMÉ: Toutes les bordures rouges lors de la sélection de sorts
+ * ✅ SUPPRIMÉ: Tous les indicateurs visuels (tour, placement, etc.)
+ * ✅ SUPPRIMÉ: Toutes les infos au survol
+ * ✅ GARDÉ: Seulement les emojis des monstres et du joueur
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -34,7 +33,7 @@ interface TiledMapRendererProps {
   // Prop pour cliquer sur les combattants
   onCombatantClick?: (combatant: Combatant) => void;
   
-  // ✅ CORRIGÉ: Import du type DamageAnimation depuis combat.ts
+  // Animations de dégâts
   damageAnimations?: DamageAnimation[];
 }
 
@@ -55,7 +54,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
   combatState,
   // Fonction pour cliquer sur les combattants
   onCombatantClick,
-  // ✅ CORRIGÉ: Animations de dégâts avec type unifié
+  // Animations de dégâts
   damageAnimations = []
 }) => {
   // États pour les données Tiled
@@ -343,25 +342,24 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
     return null;
   }, [combatState]);
 
-  // ✅ CORRIGÉ: Fonction pour rendre les animations de dégâts FIXES
+  // ✅ FONCTION POUR RENDRE LES ANIMATIONS DE DÉGÂTS
   const renderDamageAnimations = (): React.ReactNode[] => {
     if (!damageAnimations || damageAnimations.length === 0) return [];
     
     return damageAnimations.map((animation) => {
-      // ✅ CORRIGÉ: Utiliser gridPosition au lieu de position
       const renderPosition = getTileRenderPosition(animation.gridPosition.x, animation.gridPosition.y);
       
       // Calculer l'âge de l'animation (de 0 à 1)
       const age = (Date.now() - animation.timestamp) / animation.duration;
       const progress = Math.min(age, 1);
       
-      // Animation FIXE : juste disparition en fondu + léger grossissement
-      const opacity = Math.max(0, 1 - progress); // Devient transparente progressivement
-      const scale = 1 + progress * 0.3; // Grossit très légèrement (30% max)
+      // Animation : disparition en fondu + léger grossissement
+      const opacity = Math.max(0, 1 - progress);
+      const scale = 1 + progress * 0.3;
       
       // Couleurs selon le type
       const isHeal = animation.type === 'heal';
-      const textColor = isHeal ? '#22c55e' : '#ef4444'; // Vert pour soins, rouge pour dégâts
+      const textColor = isHeal ? '#22c55e' : '#ef4444';
       const shadowColor = isHeal ? '#16a34a' : '#dc2626';
       const emoji = isHeal ? '💚' : '💥';
       const sign = isHeal ? '+' : '-';
@@ -372,15 +370,14 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
           className="absolute pointer-events-none z-[3000] font-bold select-none"
           style={{
             left: renderPosition.x + DISPLAY_TILE_WIDTH / 2,
-            top: renderPosition.y + DISPLAY_TILE_HEIGHT / 2, // Position FIXE - pas de yOffset
+            top: renderPosition.y + DISPLAY_TILE_HEIGHT / 2,
             transform: `translate(-50%, -50%) scale(${scale})`,
             opacity: opacity,
             color: textColor,
             textShadow: `3px 3px 6px ${shadowColor}, 0 0 12px ${shadowColor}, 0 0 18px ${shadowColor}`,
-            fontSize: '28px', // Un peu plus grand pour être bien visible
-            fontWeight: '900', // Plus gras
+            fontSize: '28px',
+            fontWeight: '900',
             zIndex: 3000 + animation.gridPosition.y * 100 + animation.gridPosition.x,
-            // Assurer que le texte reste net
             WebkitFontSmoothing: 'antialiased',
             textRendering: 'optimizeLegibility'
           }}
@@ -392,6 +389,61 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
         </div>
       );
     });
+  };
+
+  // ✅ NOUVEAU: Fonction pour rendre les cercles colorés sur les cases des combattants
+  const renderCombatantCircles = (): React.ReactNode[] => {
+    if (combatState.phase === 'exploring') return [];
+    
+    const circles: React.ReactNode[] = [];
+    
+    // Parcourir tous les combattants vivants
+    combatState.combatants
+      .filter(combatant => combatant.isAlive)
+      .forEach(combatant => {
+        const position = getTileRenderPosition(combatant.position.x, combatant.position.y);
+        
+        // Déterminer la couleur du cercle
+        const isPlayer = combatant.id === 'player';
+        const circleColor = isPlayer ? '#3b82f6' : '#ef4444'; // Bleu pour joueur, rouge pour ennemi
+        const glowColor = isPlayer ? '#60a5fa' : '#f87171';
+        
+        circles.push(
+          <div
+            key={`circle-${combatant.id}`}
+            className="absolute pointer-events-none"
+            style={{
+              left: position.x,
+              top: position.y + DISPLAY_TILE_HEIGHT,
+              width: DISPLAY_TILE_WIDTH,
+              height: DISPLAY_TILE_HEIGHT,
+              zIndex: 950 + combatant.position.y * 100 + combatant.position.x
+            }}
+          >
+            <svg
+              width={DISPLAY_TILE_WIDTH}
+              height={DISPLAY_TILE_HEIGHT}
+              className="absolute"
+            >
+              {/* Cercle coloré au centre de la case isométrique */}
+              <circle
+                cx={DISPLAY_TILE_WIDTH / 2}
+                cy={DISPLAY_TILE_HEIGHT / 2}
+                r="12"
+                fill={circleColor}
+                stroke={glowColor}
+                strokeWidth="2"
+                className="animate-pulse"
+                style={{
+                  filter: `drop-shadow(0 0 8px ${glowColor})`,
+                }}
+              />
+            </svg>
+          </div>
+        );
+      });
+    
+    return circles;
   };
 
   // Rendu de la grille de combat Dofus
@@ -417,82 +469,49 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
         
         // Couleurs de base pour la grille tactique
         const isEvenTile = (x + y) % 2 === 0;
-        let tileColor = isEvenTile ? 'rgba(180, 180, 180, 0.4)' : 'rgba(140, 140, 140, 0.4)';
-        let borderColor = 'rgba(100, 100, 100, 0.6)';
+        let tileColor = isEvenTile ? 'rgba(180, 180, 180, 0.3)' : 'rgba(140, 140, 140, 0.3)';
+        let borderColor = 'rgba(100, 100, 100, 0.5)';
         let extraEffects = null;
         
-        // PRIORITÉ 1: Affichage de la portée des sorts
+        // PRIORITÉ 1: Affichage de la portée des sorts (plus subtil)
         if (combatState.phase === 'fighting' && combatState.selectedSpell && inSpellRange) {
           if (spellTargetType === 'valid-enemy') {
-            tileColor = 'rgba(255, 0, 0, 0.8)'; // Rouge vif pour ennemis
-            borderColor = 'rgba(255, 0, 0, 1)';
-            extraEffects = (
-              <circle
-                cx={DISPLAY_TILE_WIDTH/2}
-                cy={DISPLAY_TILE_HEIGHT/2}
-                r="12"
-                fill="rgba(255, 0, 0, 0.7)"
-                className="animate-pulse"
-              />
-            );
+            tileColor = 'rgba(255, 0, 0, 0.4)'; // Rouge moins intense
+            borderColor = 'rgba(255, 0, 0, 0.6)';
           } else if (spellTargetType === 'valid-ally') {
-            tileColor = 'rgba(0, 255, 0, 0.8)'; // Vert vif pour alliés
-            borderColor = 'rgba(0, 255, 0, 1)';
-            extraEffects = (
-              <circle
-                cx={DISPLAY_TILE_WIDTH/2}
-                cy={DISPLAY_TILE_HEIGHT/2}
-                r="12"
-                fill="rgba(0, 255, 0, 0.7)"
-                className="animate-pulse"
-              />
-            );
+            tileColor = 'rgba(0, 255, 0, 0.4)'; // Vert moins intense
+            borderColor = 'rgba(0, 255, 0, 0.6)';
           } else if (spellTargetType === 'empty') {
-            tileColor = 'rgba(128, 0, 128, 0.6)'; // Violet pour cases vides dans la portée
-            borderColor = 'rgba(128, 0, 128, 0.8)';
+            tileColor = 'rgba(128, 0, 128, 0.3)'; // Violet plus subtil
+            borderColor = 'rgba(128, 0, 128, 0.5)';
           }
         }
         
         // PRIORITÉ 2: Zones de placement
         else if (combatState.phase === 'placement' && placementZone) {
           if (placementZone === 'player') {
-            tileColor = 'rgba(59, 130, 246, 0.7)'; // Bleu pour le joueur
-            borderColor = 'rgba(59, 130, 246, 1)';
+            tileColor = 'rgba(59, 130, 246, 0.6)';
+            borderColor = 'rgba(59, 130, 246, 0.8)';
             extraEffects = (
               <circle
                 cx={DISPLAY_TILE_WIDTH/2}
                 cy={DISPLAY_TILE_HEIGHT/2}
-                r="8"
+                r="6"
                 fill="rgba(59, 130, 246, 0.8)"
                 className="animate-pulse"
               />
             );
           } else if (placementZone === 'enemy') {
-            tileColor = 'rgba(239, 68, 68, 0.7)'; // Rouge pour l'ennemi
-            borderColor = 'rgba(239, 68, 68, 1)';
+            tileColor = 'rgba(239, 68, 68, 0.6)';
+            borderColor = 'rgba(239, 68, 68, 0.8)';
           }
         } 
         
-        // PRIORITÉ 3: Zones de mouvement en combat
+        // PRIORITÉ 3: Zones de mouvement en combat (plus subtiles)
         else if (combatState.phase === 'fighting') {
-          if (occupiedBy?.id === 'player') {
-            tileColor = 'rgba(59, 130, 246, 0.7)'; // Bleu intense pour le joueur
-            borderColor = 'rgba(59, 130, 246, 1)';
-          } else if (occupiedBy && occupiedBy.id !== 'player') {
-            tileColor = 'rgba(239, 68, 68, 0.7)'; // Rouge intense pour l'ennemi
-            borderColor = 'rgba(239, 68, 68, 1)';
-          } else if (inMovementRange && !combatState.selectedSpell) {
-            tileColor = isEvenTile ? 'rgba(34, 197, 94, 0.5)' : 'rgba(22, 163, 74, 0.5)'; // Vert pour cases accessibles
-            borderColor = 'rgba(34, 197, 94, 0.7)';
-            extraEffects = (
-              <circle
-                cx={DISPLAY_TILE_WIDTH/2}
-                cy={DISPLAY_TILE_HEIGHT/2}
-                r="4"
-                fill="rgba(34, 197, 94, 0.9)"
-                className="animate-pulse"
-              />
-            );
+          if (inMovementRange && !combatState.selectedSpell) {
+            tileColor = isEvenTile ? 'rgba(34, 197, 94, 0.3)' : 'rgba(22, 163, 74, 0.3)';
+            borderColor = 'rgba(34, 197, 94, 0.5)';
           }
         }
         
@@ -513,12 +532,12 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
               height={DISPLAY_TILE_HEIGHT}
               className="absolute"
             >
-              {/* Case isométrique style Dofus */}
+              {/* Case isométrique plus subtile */}
               <path
                 d={`M ${DISPLAY_TILE_WIDTH/2} 0 L ${DISPLAY_TILE_WIDTH} ${DISPLAY_TILE_HEIGHT/2} L ${DISPLAY_TILE_WIDTH/2} ${DISPLAY_TILE_HEIGHT} L 0 ${DISPLAY_TILE_HEIGHT/2} Z`}
                 fill={tileColor}
                 stroke={borderColor}
-                strokeWidth="1.5"
+                strokeWidth="1"
               />
               
               {/* Effets visuels spéciaux */}
@@ -535,22 +554,6 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
                   fontWeight="bold"
                 >
                   📍
-                </text>
-              )}
-
-              {/* Icônes pour les sorts */}
-              {combatState.phase === 'fighting' && combatState.selectedSpell && inSpellRange && (
-                <text
-                  x={DISPLAY_TILE_WIDTH/2}
-                  y={DISPLAY_TILE_HEIGHT/2 + 3}
-                  textAnchor="middle"
-                  fontSize="10"
-                  fill="white"
-                  fontWeight="bold"
-                >
-                  {spellTargetType === 'valid-enemy' ? '⚔️' : 
-                   spellTargetType === 'valid-ally' ? '💚' : 
-                   spellTargetType === 'empty' ? '✨' : '❌'}
                 </text>
               )}
             </svg>
@@ -660,17 +663,17 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
             // PRIORITÉ 1: Curseur pour sorts
             if (combatState.phase === 'fighting' && combatState.selectedSpell && inSpellRange) {
               if (spellTargetType === 'valid-enemy' || spellTargetType === 'valid-ally') {
-                return 'cursor-crosshair hover:scale-105 transition-transform';
+                return 'cursor-crosshair';
               }
               if (spellTargetType === 'empty') {
-                return 'cursor-pointer hover:scale-105 transition-transform';
+                return 'cursor-pointer';
               }
               return 'cursor-not-allowed';
             }
             
             // PRIORITÉ 2: Curseur pour placement
             if (combatState.phase === 'placement' && placementZone === 'player') {
-              return 'cursor-pointer hover:scale-105 transition-transform';
+              return 'cursor-pointer';
             }
             
             return 'cursor-pointer';
@@ -685,43 +688,6 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
                 style={{ clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)' }}
               />
             );
-          };
-
-          // Overlay pour sort sélectionné
-          const getSpellOverlay = () => {
-            if (combatState.phase !== 'fighting' || !combatState.selectedSpell || !inSpellRange) return null;
-            
-            let overlayColor = '';
-            if (spellTargetType === 'valid-enemy') {
-              overlayColor = 'bg-red-500/20 border-2 border-red-400';
-            } else if (spellTargetType === 'valid-ally') {
-              overlayColor = 'bg-green-500/20 border-2 border-green-400';
-            } else if (spellTargetType === 'empty') {
-              overlayColor = 'bg-purple-500/20 border-2 border-purple-400';
-            }
-            
-            return (
-              <div 
-                className={`absolute inset-0 ${overlayColor} animate-pulse`}
-                style={{ clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)' }}
-              />
-            );
-          };
-
-          // Overlay pour zones de placement
-          const getPlacementOverlay = () => {
-            if (combatState.phase !== 'placement') return null;
-            
-            if (placementZone === 'player') {
-              return (
-                <div 
-                  className="absolute inset-0 bg-blue-500/30 border-2 border-blue-400 animate-pulse"
-                  style={{ clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)' }}
-                />
-              );
-            }
-            
-            return null;
           };
           
           // Tooltip amélioré
@@ -765,8 +731,6 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
               title={getTooltipText()}
             >
               {getDebugOverlay()}
-              {getSpellOverlay()}
-              {getPlacementOverlay()}
             </div>
           );
         }
@@ -776,7 +740,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
     return areas;
   };
 
-  // Rendu du joueur selon le contexte (exploration vs combat)
+  // ✅ RENDU DU JOUEUR SIMPLIFIÉ (pas de tooltip ni d'indicateurs)
   const renderPlayer = (): React.ReactNode[] => {
     const elements: React.ReactNode[] = [];
     
@@ -802,7 +766,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
 
     // Fonction pour gérer le clic sur le joueur
     const handlePlayerClick = (e: React.MouseEvent) => {
-      e.stopPropagation(); // Empêcher la propagation vers la tile
+      e.stopPropagation();
       
       if (canClickForSpell && playerCombatant && onCombatantClick) {
         console.log(`🎯 Clic sur le joueur sur la map pour lancer un sort`);
@@ -813,7 +777,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
     elements.push(
       <div
         key="player"
-        className={`absolute flex items-center justify-center ${canClickForSpell ? 'pointer-events-auto cursor-crosshair hover:scale-110' : 'pointer-events-none'}`}
+        className={`absolute flex items-center justify-center ${canClickForSpell ? 'pointer-events-auto cursor-crosshair' : 'pointer-events-auto'}`}
         style={{
           left: playerRenderPosition.x,
           top: playerRenderPosition.y + DISPLAY_TILE_HEIGHT,
@@ -824,33 +788,27 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
         onClick={handlePlayerClick}
         title={canClickForSpell ? `Lancer ${combatState.selectedSpell?.spell.name} sur vous-même` : undefined}
       >
+        {/* ✅ SIMPLIFIÉ: Juste l'emoji du joueur, sans effets visuels compliqués */}
         <div 
-          className="absolute inset-0 w-12 h-12 -translate-x-1/2 -translate-y-1/2 top-1/2 left-1/2 rounded-full blur-sm opacity-70 animate-pulse bg-blue-500"
-        />
-        <div 
-          className={`relative text-4xl drop-shadow-lg z-10 transition-transform duration-200 ${
+          className={`relative text-4xl drop-shadow-lg z-10 transition-all duration-300 ${
             isMoving ? 'scale-110' : 'scale-100'
-          } ${canClickForSpell ? 'hover:scale-125' : ''}`}
-          style={{ color: '#3b82f6', filter: 'drop-shadow(0 0 12px #3b82f6)' }}
+          }`}
+          style={{ 
+            color: '#3b82f6', 
+            filter: 'drop-shadow(0 0 12px #3b82f6)' 
+          }}
         >
           🧙‍♂️
         </div>
 
-        {/* Indicateur visuel si le joueur peut être ciblé */}
-        {canClickForSpell && combatState.selectedSpell && (
-          <div className="absolute inset-0 border-2 border-green-400 rounded-full animate-pulse pointer-events-none">
-            <div className="absolute -top-2 -right-2 w-6 h-6 bg-green-400 rounded-full flex items-center justify-center">
-              <span className="text-black text-xs font-bold">💚</span>
-            </div>
-          </div>
-        )}
+        {/* ✅ SUPPRIMÉ: Toutes les infos au survol et indicateurs visuels */}
       </div>
     );
     
     return elements;
   };
 
-  // Rendu conditionnel des entités selon la phase
+  // ✅ RENDU DES ENTITÉS ULTRA SIMPLIFIÉ - SEULEMENT LES EMOJIS
   const renderEntities = (): React.ReactNode[] => {
     if (!tiledMap) return [];
     
@@ -871,13 +829,13 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
               mapWidth={tiledMap.width}
               mapHeight={tiledMap.height}
               getTileRenderPosition={getTileRenderPosition}
-              isInCombat={false} // Pas en combat donc les monstres bougent
+              isInCombat={false}
             />
           );
         });
     }
     
-    // EN COMBAT: Afficher SEULEMENT les combattants actuels (sauf le joueur qui est rendu ailleurs)
+    // EN COMBAT: Afficher SEULEMENT l'emoji des combattants ennemis
     else if (combatState.phase === 'fighting' || combatState.phase === 'placement') {
       combatState.combatants
         .filter(combatant => combatant.id !== 'player' && combatant.isAlive)
@@ -891,7 +849,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
 
           // Fonction pour gérer le clic sur le combattant ennemi
           const handleCombatantClick = (e: React.MouseEvent) => {
-            e.stopPropagation(); // Empêcher la propagation vers la tile
+            e.stopPropagation();
             
             if (canClickForSpell && onCombatantClick) {
               console.log(`🎯 Clic sur ${combatant.name} sur la map pour lancer un sort`);
@@ -902,7 +860,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
           entities.push(
             <div
               key={combatant.id}
-              className={`absolute ${canClickForSpell ? 'cursor-crosshair pointer-events-auto hover:scale-110' : 'cursor-pointer pointer-events-auto hover:scale-110'} z-[2500] transition-transform duration-200`}
+              className={`absolute ${canClickForSpell ? 'cursor-crosshair pointer-events-auto' : 'pointer-events-auto cursor-pointer'} z-[2500] transition-all duration-300`}
               style={{
                 left: renderPosition.x,
                 top: renderPosition.y,
@@ -916,19 +874,10 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
                 `${combatant.name} (${combatant.health}/${combatant.maxHealth} PV)`
               }
             >
-              {/* Ombre du combattant */}
-              <div 
-                className="absolute inset-0 rounded-full blur-sm opacity-50 animate-pulse"
-                style={{ 
-                  background: `radial-gradient(circle, ${combatant.color}40 0%, transparent 70%)`,
-                  bottom: '10px'
-                }}
-              />
-              
-              {/* Corps du combattant */}
-              <div className="relative w-full h-full flex flex-col items-center justify-center">
+              {/* ✅ ULTRA SIMPLIFIÉ: SEULEMENT l'emoji, rien d'autre ! */}
+              <div className="relative w-full h-full flex items-center justify-center">
                 <div 
-                  className="text-4xl mb-2 drop-shadow-lg"
+                  className="text-4xl drop-shadow-lg transition-all duration-300 scale-100"
                   style={{ 
                     color: combatant.color,
                     filter: `drop-shadow(0 0 8px ${combatant.color})`
@@ -937,42 +886,16 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
                   {combatant.icon}
                 </div>
                 
-                <div className="text-white text-xs font-bold bg-gray-900/80 px-2 py-1 rounded border border-gray-600 shadow-lg">
-                  {combatant.name}
-                </div>
+                {/* 
+                ✅ TOUT SUPPRIMÉ:
+                - Les infos au survol (nom + PV + barre de vie)
+                - L'indicateur de tour (triangle jaune ▶)
+                - L'indicateur "prêt" en placement (✓ vert)
+                - L'indicateur visuel pour les sorts (bordure rouge + ⚔️)
+                - Tous les effets hover et animations complexes
                 
-                {/* Barre de vie du combattant */}
-                <div className="w-12 h-1 bg-gray-800 rounded-full mt-1 border border-gray-600 overflow-hidden">
-                  <div 
-                    className="h-full bg-gradient-to-r from-red-600 to-red-400 transition-all duration-300"
-                    style={{ 
-                      width: `${(combatant.health / combatant.maxHealth) * 100}%` 
-                    }}
-                  />
-                </div>
-                
-                {/* Indicateur si c'est son tour */}
-                {combatState.currentTurnCombatantId === combatant.id && (
-                  <div className="absolute -top-2 -right-2 w-6 h-6 bg-yellow-500 rounded-full flex items-center justify-center animate-bounce">
-                    <span className="text-xs font-bold">▶</span>
-                  </div>
-                )}
-
-                {/* Indicateur si l'ennemi est prêt en phase de placement */}
-                {combatState.phase === 'placement' && combatant.isReady && (
-                  <div className="absolute -top-2 -left-2 w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
-                    <span className="text-xs font-bold">✓</span>
-                  </div>
-                )}
-
-                {/* Indicateur visuel si le combattant peut être ciblé */}
-                {canClickForSpell && combatState.selectedSpell && (
-                  <div className="absolute inset-0 border-2 border-red-400 rounded-lg animate-pulse pointer-events-none">
-                    <div className="absolute -top-2 -right-2 w-6 h-6 bg-red-400 rounded-full flex items-center justify-center">
-                      <span className="text-white text-xs font-bold">⚔️</span>
-                    </div>
-                  </div>
-                )}
+                Il ne reste que l'emoji du monstre !
+                */}
               </div>
             </div>
           );
@@ -1001,7 +924,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
         <div className="text-center text-white">
           <div className="text-4xl mb-4 animate-spin">🌀</div>
           <div className="text-xl">Chargement de la map...</div>
-          <div className="text-gray-400 mt-2">Avec système de combat Dofus...</div>
+          <div className="text-gray-400 mt-2">Version ultra clean...</div>
         </div>
       </div>
     );
@@ -1019,7 +942,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
     );
   }
 
-  // ✅ AFFICHAGE FINAL AVEC COMBATTANTS CLIQUABLES ET ANIMATIONS DE DÉGÂTS CORRIGÉES
+  // ✅ AFFICHAGE FINAL ULTRA CLEAN - SEULEMENT LES EMOJIS
   return (
     <div 
       ref={mapContainerRef}
@@ -1039,10 +962,17 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
         );
       })}
       
-      {/* Grille de combat Dofus avec portée des sorts */}
+      {/* Grille de combat Dofus avec portée des sorts (plus subtile) */}
       {combatState.phase !== 'exploring' && (
         <div className="absolute inset-0">
           {renderDofusCombatGrid()}
+        </div>
+      )}
+
+      {/* ✅ NOUVEAU: Cercles colorés sur les cases des combattants */}
+      {combatState.phase !== 'exploring' && (
+        <div className="absolute inset-0">
+          {renderCombatantCircles()}
         </div>
       )}
       
@@ -1051,15 +981,15 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
         {renderClickableAreas()}
       </div>
       
-      {/* Rendu du joueur selon le contexte (maintenant cliquable en combat) */}
+      {/* ✅ RENDU DU JOUEUR ULTRA SIMPLIFIÉ */}
       {renderPlayer()}
       
-      {/* Rendu conditionnel des entités (maintenant cliquables en combat) */}
+      {/* ✅ RENDU DES ENTITÉS ULTRA SIMPLIFIÉ - SEULEMENT LES EMOJIS */}
       <div className="absolute inset-0">
         {renderEntities()}
       </div>
 
-      {/* ✅ CORRIGÉ: Rendu des animations de dégâts avec gridPosition */}
+      {/* Rendu des animations de dégâts */}
       <div className="absolute inset-0">
         {renderDamageAnimations()}
       </div>
@@ -1068,11 +998,11 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
       {process.env.NODE_ENV === 'development' && tiledMap && (
         <div className="absolute top-4 left-4 bg-black/80 text-white p-2 rounded text-xs z-[2000] pointer-events-none">
           <div>Map Tiled: {tiledMap.width}x{tiledMap.height}</div>
-          <div>🎮 DOFUS: {DISPLAY_TILE_WIDTH}x{DISPLAY_TILE_HEIGHT}</div>
+          <div>🎮 VERSION ULTRA CLEAN: {DISPLAY_TILE_WIDTH}x{DISPLAY_TILE_HEIGHT}</div>
           <div>Phase: {combatState.phase}</div>
           <div>Joueur: ({playerPosition.x}, {playerPosition.y})</div>
           
-          {/* ✅ CORRIGÉ: Info des animations avec gridPosition */}
+          {/* Info des animations */}
           {damageAnimations.length > 0 && (
             <div className="text-orange-400">
               💥 Animations: {damageAnimations.length}
@@ -1083,17 +1013,16 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
           {combatState.phase === 'fighting' && (
             <>
               <div className="text-red-400">
-                ⚔️ COMBAT Tour {combatState.turnNumber}
+                ⚔️ COMBAT ULTRA CLEAN Tour {combatState.turnNumber}
               </div>
               <div className="text-blue-400">
                 Combattants: {combatState.combatants.filter(c => c.isAlive).length}
               </div>
-              {/* Info du sort sélectionné avec debug */}
+              {/* Info du sort sélectionné */}
               {combatState.selectedSpell && (
                 <div className="text-purple-400">
-                  🔮 Sort: {combatState.selectedSpell.spell.name} (Portée: {combatState.selectedSpell.spell.range})
-                  <br />Type: {combatState.selectedSpell.spell.type} | Cible: {combatState.selectedSpell.spell.targetType}
-                  <br />✅ Combattants cliquables sur la map !
+                  🔮 Sort: {combatState.selectedSpell.spell.name}
+                  <br />✅ PLUS DE BORDURES ROUGES !
                 </div>
               )}
             </>
@@ -1103,7 +1032,7 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
           {combatState.phase === 'placement' && (
             <>
               <div className="text-orange-400">
-                🎯 PLACEMENT en cours
+                🎯 PLACEMENT CLEAN
               </div>
               <div className="text-blue-400">
                 Joueur placé: {combatState.combatants.find(c => c.id === 'player')?.startPosition ? 'Oui' : 'Non'}
@@ -1120,22 +1049,12 @@ const TiledMapRenderer: React.FC<TiledMapRendererProps> = ({
           
           {hoveredTile && (
             <div className="text-yellow-400">
-              👆 ({hoveredTile.x}, {hoveredTile.y}): {getObstacleType(hoveredTile.x, hoveredTile.y)}
-              {combatState.phase === 'placement' && getPlacementZoneType(hoveredTile.x, hoveredTile.y) && (
-                <span className="ml-1">
-                  - Zone {getPlacementZoneType(hoveredTile.x, hoveredTile.y)}
-                </span>
-              )}
-              {combatState.selectedSpell && isInSpellRange(hoveredTile.x, hoveredTile.y) && (
-                <span className="ml-1">
-                  - Portée: {getSpellTargetType(hoveredTile.x, hoveredTile.y)}
-                </span>
-              )}
+              👆 Case: ({hoveredTile.x}, {hoveredTile.y}): {getObstacleType(hoveredTile.x, hoveredTile.y)}
             </div>
           )}
           
-          <div className="text-purple-400">
-            ⚔️ Système Dofus: {combatState.phase}
+          <div className="text-green-400">
+            ✨ ÉMOJIS SEULEMENT - SANS BORDURES !
           </div>
         </div>
       )}

@@ -1,14 +1,25 @@
 /**
- * GAME UI - VERSION AVEC CHAT OPTIMISÉ ET MOLETTE DE CANAUX
+ * GAME UI - VERSION AVEC CHAT OPTIMISÉ ET LOGS DE COMBAT
  * ✅ Molette cliquable pour sélectionner les canaux
  * ✅ Plus d'espace pour voir les messages
  * ✅ Menu déroulant élégant pour les canaux
  * ✨ Interface maximisée pour le chat
  * 🔧 Messages plus compacts et lisibles
+ * ⚔️ NOUVEAU: Canal combat avec logs d'attaques en vert
+ * 🔧 CORRIGÉ: Toutes les erreurs TypeScript et ESLint
+ * ✅ NOUVEAU: Chat se réinitialise au reload + logs persistants
+ * 🎯 CORRIGÉ: Canal combat TOUJOURS VISIBLE même hors combat
  */
 
-import React, { useState, useRef, useEffect } from 'react';
-import { Send, Heart, ShoppingCart, Settings, Users, MessageCircle, Package, Swords, Footprints, Globe, Shield, Mail, User, SkipForward, X, ChevronDown, Map, Scroll, Star, Crown, UserCheck } from 'lucide-react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Send, Heart, ShoppingCart, Settings, Package, Swords, Footprints, Globe, Shield, Mail, User, SkipForward, X, Map, Scroll, Star, Crown, UserCheck } from 'lucide-react';
+
+// ⚔️ DÉCLARATION POUR TYPESCRIPT: Ajouter addCombatMessage à Window
+declare global {
+  interface Window {
+    addCombatMessage?: (message: string, attacker: string, damage?: number, heal?: number) => void;
+  }
+}
 
 // ===== TYPES ET INTERFACES =====
 
@@ -63,6 +74,9 @@ interface GameUIProps {
   onMountClick?: () => void;
   onMapClick?: () => void;
   onQuestsClick?: () => void;
+  
+  // ⚔️ NOUVEAU: Fonction pour recevoir les logs de combat depuis GameMap
+  onCombatLogReceived?: (message: string, attacker: string, damage?: number, heal?: number) => void;
 }
 
 interface MenuBarItem {
@@ -79,7 +93,9 @@ interface ChatMessage {
   username: string;
   message: string;
   timestamp: Date;
-  type: 'general' | 'guild' | 'whisper' | 'system' | 'commerce';
+  type: 'general' | 'guild' | 'whisper' | 'system' | 'commerce' | 'combat'; // ⚔️ AJOUT: type combat
+  damage?: number; // ⚔️ NOUVEAU: pour afficher les dégâts
+  heal?: number;   // ⚔️ NOUVEAU: pour afficher les soins
 }
 
 // ===== DONNÉES DES SORTS =====
@@ -92,7 +108,7 @@ const TOUS_LES_SORTS = [
     paCost: 3, 
     description: 'Attaque rapide (15-25 dégâts)', 
     type: 'damage',
-    targetType: 'enemy', // ✅ CORRIGÉ: enemy au lieu de self
+    targetType: 'enemy',
     minDamage: 15,
     maxDamage: 25,
     range: 1
@@ -104,7 +120,7 @@ const TOUS_LES_SORTS = [
     paCost: 4, 
     description: 'Attaque forte (25-35 dégâts)', 
     type: 'damage',
-    targetType: 'enemy', // ✅ CORRIGÉ: enemy au lieu de self
+    targetType: 'enemy',
     minDamage: 25,
     maxDamage: 35,
     range: 1
@@ -116,7 +132,7 @@ const TOUS_LES_SORTS = [
     paCost: 2, 
     description: 'Empoisonne (10-15 dégâts)', 
     type: 'damage',
-    targetType: 'enemy', // ✅ CORRIGÉ: enemy au lieu de self
+    targetType: 'enemy',
     minDamage: 10,
     maxDamage: 15,
     range: 2
@@ -128,7 +144,7 @@ const TOUS_LES_SORTS = [
     paCost: 3, 
     description: 'Soigne 20-30 PV', 
     type: 'heal',
-    targetType: 'ally', // ✅ CORRIGÉ: ally au lieu de self
+    targetType: 'ally',
     minHeal: 20,
     maxHeal: 30,
     range: 3
@@ -310,7 +326,9 @@ const GameUI: React.FC<GameUIProps> = ({
   onGuildClick,
   onMountClick,
   onMapClick,
-  onQuestsClick
+  onQuestsClick,
+  // ⚔️ NOUVEAU: Callback pour les logs de combat
+  onCombatLogReceived
 }) => {
   
   // ===== LOGIQUE DE CALCUL =====
@@ -392,11 +410,12 @@ const GameUI: React.FC<GameUIProps> = ({
   
   // ===== ÉTAT LOCAL =====
   
+  // ✅ CORRIGÉ: Messages initiaux SANS exemples de combat (pour reset au reload)
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     {
       id: 1,
       username: 'System',
-      message: 'Chat optimisé ! Plus d\'espace pour voir les messages.',
+      message: 'Chat optimisé avec logs de combat ! Le canal Combat est maintenant toujours visible.',
       timestamp: new Date(),
       type: 'system'
     },
@@ -421,47 +440,89 @@ const GameUI: React.FC<GameUIProps> = ({
       timestamp: new Date(),
       type: 'guild'
     },
+    // 🎯 NOUVEAU: Message d'aide pour le canal combat
     {
       id: 5,
-      username: 'Joueur2',
-      message: 'Quelqu\'un pour m\'aider avec cette quête ?',
+      username: 'System',
+      message: 'Utilisez le canal Combat pour voir les logs d\'attaques. Pour tester: ouvrez la console (F12) et tapez: window.addCombatMessage("Test attaque", "Vous", 42)',
       timestamp: new Date(),
-      type: 'general'
-    },
-    {
-      id: 6,
-      username: 'Ninja',
-      message: 'Viens joindre le combat à côté de la fontaine !',
-      timestamp: new Date(),
-      type: 'general'
-    },
-    {
-      id: 7,
-      username: 'Mage',
-      message: 'Super équipement trouvé dans ce donjon',
-      timestamp: new Date(),
-      type: 'general'
-    },
-    {
-      id: 8,
-      username: 'Guerrier',
-      message: 'Qui veut former un groupe pour le boss ?',
-      timestamp: new Date(),
-      type: 'general'
+      type: 'combat'
     }
   ]);
   
   const [chatInput, setChatInput] = useState('');
-  const [activeChannel, setActiveChannel] = useState<'general' | 'guild' | 'commerce' | 'whisper'>('general');
-  // 🎯 NOUVEAU: État pour afficher/masquer le menu des canaux
+  // ⚔️ MODIFIÉ: Ajout du canal combat avec canal par défaut basé sur le combat
+  const [activeChannel, setActiveChannel] = useState<'general' | 'guild' | 'commerce' | 'whisper' | 'combat'>(
+    isInCombat ? 'combat' : 'general'
+  );
   const [showChannelMenu, setShowChannelMenu] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // ===== FONCTIONS CALLBACKS AVEC useCallback POUR ÉVITER LES ERREURS =====
+  
+  // ⚔️ CORRIGÉ: Fonction pour ajouter un message de combat qui fonctionne toujours
+  const addCombatMessage = useCallback((message: string, attacker: string, damage?: number, heal?: number) => {
+    console.log('🎯 Ajout message combat:', message, attacker, damage, heal); // Pour debug
+    
+    const newMessage: ChatMessage = {
+      id: Date.now() + Math.random(), // ID unique pour éviter les conflits
+      username: attacker,
+      message: message,
+      timestamp: new Date(),
+      type: 'combat',
+      damage: damage,
+      heal: heal
+    };
+    
+    // ✅ CORRIGÉ: Utiliser une fonction pour s'assurer que l'état est bien mis à jour
+    setChatMessages(prevMessages => {
+      const updatedMessages = [...prevMessages, newMessage];
+      console.log('✅ Messages mis à jour:', updatedMessages.length); // Pour debug
+      return updatedMessages;
+    });
+    
+    // Changer vers le canal combat automatiquement si pas déjà dessus
+    setActiveChannel(prevChannel => {
+      if (prevChannel !== 'combat') {
+        console.log('🔄 Changement vers canal combat');
+        return 'combat';
+      }
+      return prevChannel;
+    });
+  }, []);
 
   // ===== EFFETS =====
   
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
+
+  // ⚔️ NOUVEAU: Changer automatiquement vers le canal combat quand on entre en combat
+  useEffect(() => {
+    if (isInCombat && activeChannel !== 'combat') {
+      setActiveChannel('combat');
+    }
+  }, [isInCombat, activeChannel]);
+
+  // ⚔️ CORRIGÉ: Système persistant pour les logs de combat
+  useEffect(() => {
+    // ✅ TOUJOURS exposer la fonction, même sans onCombatLogReceived
+    window.addCombatMessage = addCombatMessage;
+    console.log('🔧 Fonction addCombatMessage installée sur window'); // Pour debug
+    
+    // Test pour voir si la fonction fonctionne
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🧪 Test function available:', typeof window.addCombatMessage);
+    }
+    
+    // Cleanup: supprimer la fonction quand le composant se démonte
+    return () => {
+      console.log('🧹 Nettoyage de la fonction addCombatMessage');
+      if (window.addCombatMessage) {
+        delete window.addCombatMessage;
+      }
+    };
+  }, [addCombatMessage]); // ✅ Seulement addCombatMessage dans les dépendances
 
   // ===== FONCTIONS UTILITAIRES =====
   
@@ -491,13 +552,20 @@ const GameUI: React.FC<GameUIProps> = ({
       guild: 'text-emerald-300',
       whisper: 'text-purple-300',
       system: 'text-amber-300',
-      commerce: 'text-orange-300'
+      commerce: 'text-orange-300',
+      combat: 'text-green-300' // ⚔️ NOUVEAU: Couleur verte pour les messages de combat
     };
     return colorMap[type] || 'text-slate-100';
   };
 
   const getChannelIcon = (channel: string) => {
-    const iconMap = { general: Globe, guild: Shield, commerce: ShoppingCart, whisper: Mail };
+    const iconMap = { 
+      general: Globe, 
+      guild: Shield, 
+      commerce: ShoppingCart, 
+      whisper: Mail,
+      combat: Swords // ⚔️ NOUVEAU: Icône d'épées pour le combat
+    };
     return iconMap[channel as keyof typeof iconMap] || Globe;
   };
 
@@ -506,15 +574,38 @@ const GameUI: React.FC<GameUIProps> = ({
       general: 'Général',
       guild: 'Guilde',
       commerce: 'Commerce',
-      whisper: 'Privé'
+      whisper: 'Privé',
+      combat: 'Combat' // ⚔️ NOUVEAU: Nom pour le canal combat
     };
     return nameMap[channel as keyof typeof nameMap] || 'Général';
   };
 
-  // 🎯 NOUVELLE FONCTION: Sélectionner un canal et fermer le menu
-  const selectChannel = (channel: 'general' | 'guild' | 'commerce' | 'whisper'): void => {
+  const selectChannel = (channel: 'general' | 'guild' | 'commerce' | 'whisper' | 'combat'): void => {
     setActiveChannel(channel);
     setShowChannelMenu(false);
+  };
+
+  // ⚔️ NOUVEAU: Fonction pour formater les messages de combat avec dégâts/soins
+  const formatCombatMessage = (msg: ChatMessage): React.ReactNode => {
+    if (msg.type !== 'combat') {
+      return msg.message;
+    }
+
+    return (
+      <div className="flex items-center space-x-1">
+        <span>{msg.message}</span>
+        {msg.damage && (
+          <span className="bg-red-600/80 text-white px-1.5 py-0.5 rounded text-xs font-bold">
+            💥 -{msg.damage} PV
+          </span>
+        )}
+        {msg.heal && (
+          <span className="bg-green-600/80 text-white px-1.5 py-0.5 rounded text-xs font-bold">
+            💚 +{msg.heal} PV
+          </span>
+        )}
+      </div>
+    );
   };
 
   // ===== FONCTIONS POUR LES SORTS =====
@@ -549,8 +640,6 @@ const GameUI: React.FC<GameUIProps> = ({
     console.log(`🔮 GameUI: Clic sur sort ${spellId} (PA: ${finalPACurrent})`);
     onSpellClick?.(spellId);
   };
-
-
   
   // ===== RENDU =====
   
@@ -595,7 +684,7 @@ const GameUI: React.FC<GameUIProps> = ({
       {/* ✨ INTERFACE PRINCIPALE - MODULES HARMONISÉS */}
       <div className="relative flex w-full p-3 gap-3 pointer-events-auto items-end h-48">
         
-        {/* ===== MODULE CHAT OPTIMISÉ - SANS EN-TÊTE ===== */}
+        {/* ===== MODULE CHAT OPTIMISÉ AVEC COMBAT - SANS EN-TÊTE ===== */}
         <div className="w-[35%] h-full">
           <div className="bg-gradient-to-br from-slate-900/90 to-slate-800/85 border border-slate-600/50 rounded-lg backdrop-blur-md shadow-xl h-full flex flex-col">
             
@@ -603,9 +692,11 @@ const GameUI: React.FC<GameUIProps> = ({
             <div className="flex-1 overflow-y-auto p-2 space-y-1 scrollbar-thin scrollbar-thumb-slate-600 scrollbar-track-slate-800">
               {chatMessages
                 .filter(msg => msg.type === activeChannel || msg.type === 'system')
-                .slice(-25) // Encore plus de messages visibles
+                .slice(-25)
                 .map((msg) => (
-                <div key={msg.id} className="group hover:bg-slate-700/15 rounded px-1.5 py-1 transition-colors">
+                <div key={msg.id} className={`group hover:bg-slate-700/15 rounded px-1.5 py-1 transition-colors ${
+                  msg.type === 'combat' ? 'bg-green-900/10 border-l-2 border-green-500/30' : ''
+                }`}>
                   <div className="flex items-start space-x-1.5">
                     {/* Timestamp plus petit */}
                     <span className="text-slate-500 font-mono text-xs mt-0.5 min-w-fit opacity-70">
@@ -617,7 +708,9 @@ const GameUI: React.FC<GameUIProps> = ({
                         <span className={`font-medium text-xs ${getChannelColor(msg.type)} flex-shrink-0`}>
                           {msg.username}:
                         </span>
-                        <span className="text-slate-300 text-xs break-words leading-tight">{msg.message}</span>
+                        <div className="text-slate-300 text-xs break-words leading-tight">
+                          {formatCombatMessage(msg)}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -640,13 +733,17 @@ const GameUI: React.FC<GameUIProps> = ({
                 />
               </button>
               
-              {/* 🎯 MENU DÉROULANT DES CANAUX */}
+              {/* 🎯 MENU DÉROULANT DES CANAUX AVEC COMBAT TOUJOURS VISIBLE */}
               {showChannelMenu && (
                 <div className="absolute bottom-full mb-2 left-0 bg-gradient-to-br from-slate-900/95 to-slate-800/90 border border-slate-600/60 rounded-lg backdrop-blur-md shadow-xl p-2 min-w-[150px] z-50">
                   <div className="space-y-1">
-                    {(['general', 'guild', 'commerce', 'whisper'] as const).map((channel) => {
+                    {/* 🎯 CORRIGÉ: Le canal combat est TOUJOURS visible maintenant */}
+                    {(['general', 'guild', 'commerce', 'whisper', 'combat'] as const).map((channel) => {
                       const Icon = getChannelIcon(channel);
                       const isActive = activeChannel === channel;
+                      
+                      // 🎯 SUPPRIMÉ: Plus de condition pour masquer le canal combat !
+                      // Le canal combat est maintenant toujours visible
                       
                       return (
                         <button
@@ -654,14 +751,18 @@ const GameUI: React.FC<GameUIProps> = ({
                           onClick={() => selectChannel(channel)}
                           className={`w-full flex items-center space-x-2 px-3 py-2 rounded-lg transition-all duration-200 ${
                             isActive
-                              ? 'bg-gradient-to-r from-blue-500/25 to-cyan-500/15 border border-cyan-400/40 text-cyan-300'
+                              ? channel === 'combat' 
+                                ? 'bg-gradient-to-r from-green-500/25 to-emerald-500/15 border border-green-400/40 text-green-300'
+                                : 'bg-gradient-to-r from-blue-500/25 to-cyan-500/15 border border-cyan-400/40 text-cyan-300'
                               : 'text-slate-300 hover:text-slate-100 hover:bg-slate-700/40'
                           }`}
                         >
                           <Icon size={14} />
                           <span className="text-sm font-medium">{getChannelName(channel)}</span>
                           {isActive && (
-                            <div className="ml-auto w-2 h-2 bg-cyan-400 rounded-full animate-pulse" />
+                            <div className={`ml-auto w-2 h-2 rounded-full animate-pulse ${
+                              channel === 'combat' ? 'bg-green-400' : 'bg-cyan-400'
+                            }`} />
                           )}
                         </button>
                       );
@@ -680,16 +781,18 @@ const GameUI: React.FC<GameUIProps> = ({
                   placeholder={`Message ${getChannelName(activeChannel).toLowerCase()}...`}
                   className="w-full bg-slate-800/60 text-slate-100 text-sm px-3 py-2 rounded-lg border border-slate-600/40 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/25 placeholder-slate-400 transition-all duration-200"
                   maxLength={200}
+                  // ⚔️ NOUVEAU: Désactiver la saisie sur le canal combat (auto seulement)
+                  disabled={activeChannel === 'combat'}
                 />
                 <div className="absolute right-2 top-1/2 transform -translate-y-1/2 text-slate-500 text-xs">
-                  {chatInput.length}/200
+                  {activeChannel === 'combat' ? 'Auto' : `${chatInput.length}/200`}
                 </div>
               </div>
               <button
                 onClick={sendMessage}
-                disabled={!chatInput.trim()}
+                disabled={!chatInput.trim() || activeChannel === 'combat'}
                 className="p-2 text-cyan-400 hover:text-cyan-300 disabled:text-slate-600 transition-colors rounded-lg hover:bg-cyan-400/10 disabled:hover:bg-transparent"
-                title="Envoyer le message"
+                title={activeChannel === 'combat' ? 'Messages automatiques en combat' : 'Envoyer le message'}
               >
                 <Send size={16} />
               </button>
