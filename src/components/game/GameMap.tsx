@@ -1,5 +1,5 @@
 /**
- * GAME MAP - VERSION FINALE AVEC ANIMATIONS DE DÉGÂTS
+ * GAME MAP - VERSION FINALE AVEC ANIMATIONS DE DÉGÂTS + COURSE VERS MONSTRE
  * ✅ Toutes les fonctionnalités originales conservées
  * ✅ Timeline séparée au-dessus des sorts en bas à droite
  * ✅ Boutons combat dans le module central du GameUI
@@ -11,6 +11,9 @@
  * ✅ NOUVEAU: Animations "💥 -124" et "💚 +45" lors des sorts !
  * ✅ Interface clean et fonctionnelle complète
  * ✅ CORRIGÉ: Types DamageAnimation unifiés
+ * ✅ CORRIGÉ: Import useCombat → useCombatDofus (SEULE MODIFICATION)
+ * ✅ NOUVEAU: Le personnage court vers le monstre avant le combat !
+ * ✅ NOUVEAU: Possibilité d'annuler l'approche en cliquant ailleurs
  */
 
 import React, { useState, useCallback, useEffect } from "react";
@@ -34,6 +37,7 @@ import QuestsPanel from "./QuestsPanel";
 import CombatTimeline from "./CombatTimeline";
 
 import { useGameMovement } from "../../hooks/useGameMovement";
+// ✅ SEULE CORRECTION: Import du bon hook de combat
 import { useCombatDofus } from "../../hooks/useCombat";
 
 import {
@@ -79,7 +83,7 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
   // Hook de mouvement
   const movement = useGameMovement();
 
-  // ✅ NOUVEAU: Hook de combat avec animations de dégâts
+  // ✅ NOUVEAU: Hook de combat avec animations de dégâts (CORRIGÉ)
   const combat = useCombatDofus();
 
   // ✅ RÉCUPÉRER LES SORTS UNIFIÉS DEPUIS LE HOOK
@@ -87,6 +91,10 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
 
   // État pour les monstres d'exploration
   const [explorationMonsters, setExplorationMonsters] = useState<Monster[]>([]);
+
+  // ✅ NOUVEAUX ÉTATS POUR LA COURSE VERS MONSTRE
+  const [targetedMonster, setTargetedMonster] = useState<Monster | null>(null);
+  const [isApproachingMonster, setIsApproachingMonster] = useState(false);
 
   // États pour les panneaux plein écran
   const [showFullscreenCharacter, setShowFullscreenCharacter] = useState(false);
@@ -294,11 +302,11 @@ const GameMap: React.FC<GameMapProps> = ({ character, onBackToMenu }) => {
     setExplorationMonsters(initialMonsters);
     console.log("🐲 Monstres d'exploration générés:", initialMonsters);
     // Ajouter un raccourci clavier pour le diagnostic (dans useEffect):
-window.addEventListener('keydown', (event) => {
-  if (event.key === 'T' || event.key === 't') {
-    diagnoseCombatIssue();
-  }
-});
+    window.addEventListener('keydown', (event) => {
+      if (event.key === 'T' || event.key === 't') {
+        diagnoseCombatIssue();
+      }
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -343,18 +351,61 @@ window.addEventListener('keydown', (event) => {
     }
   }, [combat.combatState]);
 
+  // ✅ NOUVELLE FONCTION: Vérifier la proximité avec le monstre ciblé
+  const checkMonsterProximity = useCallback(() => {
+    if (!targetedMonster || !isApproachingMonster) return;
+    
+    // Calculer la distance avec le monstre ciblé
+    const distance = Math.abs(movement.playerPosition.x - targetedMonster.position.x) + 
+                     Math.abs(movement.playerPosition.y - targetedMonster.position.y);
+    
+    console.log(`📏 Distance avec ${targetedMonster.name}: ${distance}`);
+    
+    // Si on est à côté du monstre (distance 1) et qu'on n'est plus en mouvement
+    if (distance <= 1 && !movement.isMoving) {
+      console.log(`⚔️ COMBAT DÉCLENCHÉ avec ${targetedMonster.name} après approche !`);
+      
+      // Lancer le combat
+      combat.startCombat(targetedMonster, movement.playerPosition);
+      
+      // Supprimer le monstre de la liste d'exploration
+      setExplorationMonsters((prev) => prev.filter((m) => m.id !== targetedMonster.id));
+      
+      // Nettoyer les états d'approche
+      setTargetedMonster(null);
+      setIsApproachingMonster(false);
+    }
+  }, [targetedMonster, isApproachingMonster, movement.playerPosition, movement.isMoving, combat, setExplorationMonsters]);
 
+  // ✅ NOUVELLE FONCTION: Annuler l'approche du monstre
+  const cancelMonsterApproach = useCallback(() => {
+    if (isApproachingMonster) {
+      console.log(`❌ Approche du monstre annulée`);
+      setTargetedMonster(null);
+      setIsApproachingMonster(false);
+      // Arrêter le mouvement
+      movement.stopMovement();
+    }
+  }, [isApproachingMonster, movement]);
+
+  // ✅ EFFET POUR SURVEILLER LA PROXIMITÉ AVEC LE MONSTRE
+  useEffect(() => {
+    checkMonsterProximity();
+  }, [checkMonsterProximity]);
+
+  // ✅ FONCTION MODIFIÉE: handleMonsterClick maintenant lance l'approche
   const handleMonsterClick = useCallback(
     (monster: Monster) => {
-      console.log(`⚔️ COMBAT DÉCLENCHÉ avec ${monster.name} !`);
-
-      // Démarrer le combat
-      combat.startCombat(monster, movement.playerPosition);
-
-      // Supprimer le monstre de la liste d'exploration
-      setExplorationMonsters((prev) => prev.filter((m) => m.id !== monster.id));
+      console.log(`🏃‍♂️ APPROCHE DE ${monster.name} !`);
+      
+      // Au lieu de lancer le combat immédiatement, on lance le mouvement
+      setTargetedMonster(monster);
+      setIsApproachingMonster(true);
+      
+      // Lancer le mouvement vers le monstre
+      movement.handleTileClick(monster.position.x, monster.position.y);
     },
-    [combat, movement.playerPosition]
+    [movement]
   );
 
   // ===== GESTION DES RACCOURCIS CLAVIER =====
@@ -379,6 +430,11 @@ window.addEventListener('keydown', (event) => {
         setShowMountPanel(false);
         setShowMapPanel(false);
         setShowQuestsPanel(false);
+        
+        // ✅ NOUVEAU: Escape annule aussi l'approche du monstre
+        if (isApproachingMonster) {
+          cancelMonsterApproach();
+        }
       }
       // Raccourcis pour ouvrir les panneaux
       if (event.key === "c" || event.key === "C") {
@@ -420,7 +476,7 @@ window.addEventListener('keydown', (event) => {
 
     window.addEventListener("keydown", handleKeyPress);
     return () => window.removeEventListener("keydown", handleKeyPress);
-  }, [isGamePaused]);
+  }, [isGamePaused, isApproachingMonster, cancelMonsterApproach]);
 
   // ===== GESTION DES STATS JOUEUR =====
 
@@ -652,11 +708,27 @@ window.addEventListener('keydown', (event) => {
     [movement]
   );
 
+  // ✅ FONCTION MODIFIÉE: handleTileClick avec gestion de l'annulation d'approche
   const handleTileClick = useCallback(
     (col: number, row: number) => {
       console.log(`🎯 === CLIC DÉTECTÉ ===`);
       console.log(`📍 Position: (${col}, ${row})`);
       console.log(`🎮 Phase: ${combat.combatState.phase}`);
+
+      // ✅ NOUVEAU: SI ON APPROCHE UN MONSTRE - Vérifier si on clique sur autre chose
+      if (isApproachingMonster && targetedMonster) {
+        // Si on clique sur le même monstre, ne rien faire
+        if (col === targetedMonster.position.x && row === targetedMonster.position.y) {
+          console.log(`🎯 Clic sur le monstre ciblé, poursuite de l'approche`);
+          return;
+        }
+        
+        // Sinon, annuler l'approche
+        console.log(`❌ Clic ailleurs pendant l'approche, annulation`);
+        cancelMonsterApproach();
+        
+        // Continuer avec le nouveau clic
+      }
 
       // Bloquer si panneau ouvert en exploration
       if (isGamePaused && combat.combatState.phase === "exploring") {
@@ -725,7 +797,8 @@ window.addEventListener('keydown', (event) => {
         movement.handleTileClick(col, row);
       }
     },
-    [isGamePaused, movement, combat, handleCombatantClick]
+    [isGamePaused, movement, combat, handleCombatantClick, 
+     isApproachingMonster, targetedMonster, cancelMonsterApproach]
   );
 
   // ===== ANNULATION DE COMBAT =====
@@ -1012,6 +1085,8 @@ window.addEventListener('keydown', (event) => {
             </div>
           </div>
         )}
+
+
 
         {/* ===== MENU PARAMÈTRES ===== */}
         <div className="absolute top-4 right-4 z-50">
